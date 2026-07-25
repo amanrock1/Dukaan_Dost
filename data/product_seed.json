@@ -1,0 +1,17 @@
+[
+  { "name": "Laptop", "category": "Electronics", "unit": "pcs", "currentStock": 25, "lowStockThreshold": 5, "unitPrice": 40000, "gstRate": 18 },
+  { "name": "Keyboard", "category": "Electronics", "unit": "pcs", "currentStock": 50, "lowStockThreshold": 10, "unitPrice": 1500, "gstRate": 18 },
+  { "name": "Monitor", "category": "Electronics", "unit": "pcs", "currentStock": 15, "lowStockThreshold": 3, "unitPrice": 12000, "gstRate": 18 },
+  { "name": "Headphones", "category": "Electronics", "unit": "pcs", "currentStock": 40, "lowStockThreshold": 8, "unitPrice": 2500, "gstRate": 18 },
+  { "name": "Printer", "category": "Electronics", "unit": "pcs", "currentStock": 10, "lowStockThreshold": 3, "unitPrice": 18000, "gstRate": 18 },
+  { "name": "Mouse", "category": "Electronics", "unit": "pcs", "currentStock": 60, "lowStockThreshold": 10, "unitPrice": 800, "gstRate": 18 },
+  { "name": "Notebook", "category": "Stationery", "unit": "pcs", "currentStock": 200, "lowStockThreshold": 30, "unitPrice": 50, "gstRate": 12 },
+  { "name": "Pen", "category": "Stationery", "unit": "pcs", "currentStock": 500, "lowStockThreshold": 50, "unitPrice": 20, "gstRate": 12 },
+  { "name": "Shoes", "category": "Footwear", "unit": "pairs", "currentStock": 30, "lowStockThreshold": 5, "unitPrice": 3000, "gstRate": 5 },
+  { "name": "Medicine Paracetamol", "category": "Pharmacy", "unit": "strips", "currentStock": 100, "lowStockThreshold": 20, "unitPrice": 35, "gstRate": 12 },
+  { "name": "USB Cable", "category": "Electronics", "unit": "pcs", "currentStock": 80, "lowStockThreshold": 15, "unitPrice": 250, "gstRate": 18 },
+  { "name": "School Bag", "category": "Stationery", "unit": "pcs", "currentStock": 20, "lowStockThreshold": 5, "unitPrice": 1200, "gstRate": 18 },
+  { "name": "Router", "category": "Electronics", "unit": "pcs", "currentStock": 12, "lowStockThreshold": 3, "unitPrice": 3500, "gstRate": 18 },
+  { "name": "Sanitizer", "category": "Pharmacy", "unit": "bottles", "currentStock": 45, "lowStockThreshold": 10, "unitPrice": 150, "gstRate": 5 },
+  { "name": "Flash Drive 32GB", "category": "Electronics", "unit": "pcs", "currentStock": 35, "lowStockThreshold": 8, "unitPrice": 450, "gstRate": 18 }
+]

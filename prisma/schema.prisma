@@ -1,0 +1,82 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Product {
+  id                 String   @id @default(cuid())
+  name               String
+  category           String
+  unit               String   @default("pcs")
+  currentStock       Int      @default(0) @map("current_stock")
+  lowStockThreshold  Int      @default(5) @map("low_stock_threshold")
+  unitPrice          Float    @default(0) @map("unit_price")
+  gstRate            Float    @default(18.0) @map("gst_rate")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  sales     Sale[]
+  purchases Purchase[]
+
+  @@map("products")
+}
+
+model Sale {
+  id         String   @id @default(cuid())
+  productId  String   @map("product_id")
+  product    Product  @relation(fields: [productId], references: [id])
+  quantity   Int
+  unitPrice  Float    @map("unit_price")
+  amount     Float
+  gstAmount  Float    @default(0) @map("gst_amount")
+  totalAmount Float   @default(0) @map("total_amount")
+  source     String   @default("text")
+  rawInput   String   @map("raw_input")
+  timestamp  DateTime @default(now())
+
+  invoice    Invoice?
+
+  @@map("sales")
+}
+
+model Purchase {
+  id         String   @id @default(cuid())
+  productId  String   @map("product_id")
+  product    Product  @relation(fields: [productId], references: [id])
+  quantity   Int
+  unitPrice  Float    @map("unit_price")
+  amount     Float
+  source     String   @default("text")
+  rawInput   String   @map("raw_input")
+  timestamp  DateTime @default(now())
+
+  @@map("purchases")
+}
+
+model Invoice {
+  id            String   @id @default(cuid())
+  saleId        String   @unique @map("sale_id")
+  sale          Sale     @relation(fields: [saleId], references: [id])
+  invoiceNumber String   @unique @map("invoice_number")
+  pdfData       String   @map("pdf_data")
+  generatedAt   DateTime @default(now()) @map("generated_at")
+
+  @@map("invoices")
+}
+
+model AILog {
+  id                String   @id @default(cuid())
+  timestamp         DateTime @default(now())
+  rawInput          String   @map("raw_input")
+  detectedIntent    String   @map("detected_intent")
+  extractedEntities String   @map("extracted_entities")
+  actionTaken       String   @map("action_taken")
+  status            String   @default("success")
+  errorMessage      String?  @map("error_message")
+
+  @@map("ai_logs")
+}
