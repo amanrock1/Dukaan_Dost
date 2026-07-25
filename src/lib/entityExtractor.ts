@@ -1,4 +1,4 @@
-import { llmChat } from 'z-ai-web-dev-sdk';
+import { llmChat } from './ai-sdk';
 import { db } from './db';
 
 export interface ExtractedEntities {

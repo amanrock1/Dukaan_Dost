@@ -1,4 +1,4 @@
-import { llmChat } from 'z-ai-web-dev-sdk';
+import { llmChat } from './ai-sdk';
 
 export type Intent = 'record_sale' | 'record_purchase' | 'check_stock' | 'generate_invoice' | 'unknown';
 

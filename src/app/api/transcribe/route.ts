@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { transcribe } from 'z-ai-web-dev-sdk';
+import { transcribe } from '@/lib/ai-sdk';
 
 export async function POST(request: NextRequest) {
   try {
