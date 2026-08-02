@@ -8,13 +8,13 @@ interface ClassificationResult {
   reasoning: string;
 }
 
-const INTENT_PROMPT = `You are an intent classifier for an Indian retail inventory management system. The user types in Hindi or English.
+const INTENT_PROMPT = `You are an intent classifier for an Indian retail inventory management system. The user types in Hindi, English, or Hinglish (Hindi written in Latin script).
 
 Classify the input into EXACTLY ONE of these intents:
-- record_sale: User wants to record that items were SOLD (e.g., "5 laptops sold", "becha 3 keyboards", "sale of 2 monitors")
-- record_purchase: User wants to record that items were PURCHASED/BOUGHT (e.g., "bought 10 notebooks", "purchase 5 headphones", "khareeda 20 pens")
-- check_stock: User wants to CHECK current stock levels (e.g., "how many laptops", "stock of keyboard", "kitne monitors hai")
-- generate_invoice: User wants to GENERATE an invoice for a sale (e.g., "generate invoice", "bill banao", "invoice for last sale")
+- record_sale: User wants to record that items were SOLD (e.g., "5 laptops sold", "becha 3 keyboards", "behca 10 packet", "sale of 2 monitors", "10 packet kurkure beche")
+- record_purchase: User wants to record that items were PURCHASED/BOUGHT (e.g., "bought 10 notebooks", "purchase 5 headphones", "khareeda 20 pens", "khareed liya 15 item")
+- check_stock: User wants to CHECK current stock levels (e.g., "how many laptops", "stock of keyboard", "kitne monitors hai", "stock check karo")
+- generate_invoice: User wants to GENERATE an invoice for a sale (e.g., "generate invoice", "bill banao", "invoice for last sale", "invoice banao")
 
 Respond in JSON format only:
 {"intent": "<intent_name>", "confidence": <0.0-1.0>, "reasoning": "<brief explanation>"}
@@ -26,6 +26,27 @@ Input: "kitne monitors stock mein hain" -> {"intent":"check_stock","confidence":
 Input: "invoice banao" -> {"intent":"generate_invoice","confidence":0.9,"reasoning":"User wants to generate an invoice"}`;
 
 export async function classifyIntent(userInput: string): Promise<ClassificationResult> {
+  const lower = userInput.toLowerCase();
+  
+  // High-priority hybrid keyword pre-classification to prevent LLM typo issues
+  const saleKeywords = ['\\bsold\\b', '\\bbecha\\b', '\\bbehca\\b', '\\bbeche\\b', '\\bbech\\b', '\\bsale\\b', '\\bsell\\b'];
+  const purchaseKeywords = ['\\bbought\\b', '\\bpurchased\\b', '\\bpurchase\\b', '\\bkhareeda\\b', '\\bkharida\\b', '\\bkharid\\b', '\\bkhareede\\b', '\\bliya\\b', '\\blaaya\\b', '\\blaya\\b'];
+  const invoiceKeywords = ['\\binvoice\\b', '\\bbill\\b', '\\breceipt\\b'];
+  const stockKeywords = ['\\bstock\\b', '\\bkitne\\b', '\\bbaaki\\b', '\\bremaining\\b'];
+
+  if (saleKeywords.some(pattern => new RegExp(pattern, 'i').test(lower))) {
+    return { intent: 'record_sale', confidence: 0.95, reasoning: 'Hybrid: Sale keyword detected in user input' };
+  }
+  if (purchaseKeywords.some(pattern => new RegExp(pattern, 'i').test(lower))) {
+    return { intent: 'record_purchase', confidence: 0.95, reasoning: 'Hybrid: Purchase keyword detected in user input' };
+  }
+  if (invoiceKeywords.some(pattern => new RegExp(pattern, 'i').test(lower))) {
+    return { intent: 'generate_invoice', confidence: 0.95, reasoning: 'Hybrid: Invoice keyword detected in user input' };
+  }
+  if (stockKeywords.some(pattern => new RegExp(pattern, 'i').test(lower))) {
+    return { intent: 'check_stock', confidence: 0.95, reasoning: 'Hybrid: Stock check keyword detected in user input' };
+  }
+
   try {
     const response = await llmChat({
       model: 'groq-llama3.3-70b',
@@ -52,15 +73,14 @@ export async function classifyIntent(userInput: string): Promise<ClassificationR
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : String(error);
     console.error('Intent classification error:', msg);
-    // Fallback rule-based classification
     return fallbackClassify(userInput);
   }
 }
 
 function fallbackClassify(input: string): ClassificationResult {
   const lower = input.toLowerCase();
-  const saleWords = ['sold', 'becha', 'sale', 'bech', 'sold out', 'gaya'];
-  const purchaseWords = ['bought', 'purchased', 'purchase', 'khareeda', 'liya', 'order', 'aaya', 'stock add', 'add stock'];
+  const saleWords = ['sold', 'becha', 'behca', 'beche', 'bech', 'sale', 'sold out', 'gaya', 'sell'];
+  const purchaseWords = ['bought', 'purchased', 'purchase', 'khareeda', 'kharida', 'kharid', 'khareede', 'liya', 'order', 'aaya', 'stock add', 'add stock'];
   const stockWords = ['stock', 'how many', 'kitne', 'quantity', 'available', 'baaki', 'remaining', 'check'];
   const invoiceWords = ['invoice', 'bill', 'receipt', 'generate invoice', 'bill banao', 'invoice banao'];
 

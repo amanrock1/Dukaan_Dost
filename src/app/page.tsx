@@ -40,7 +40,7 @@ export default function DashboardPage() {
       ? {
           user: { id: "guest-user", username: "guest", name: "Guest Reviewer" },
           shops: [
-            { id: "", name: "Raj General Store (Guest)" },
+            { id: null, name: "Raj General Store (Guest)" },
             { id: "demo-shop-1", name: "Sharma Electronics (Demo)" }
           ]
         }
@@ -48,7 +48,7 @@ export default function DashboardPage() {
   );
   const [activeShop, setActiveShop] = useState<any | null>(
     BYPASS_LOGIN 
-      ? { id: "", name: "Raj General Store (Guest)" }
+      ? { id: null, name: "Raj General Store (Guest)" }
       : null
   );
   const [shopDropdownOpen, setShopDropdownOpen] = useState(false);
@@ -115,25 +115,28 @@ export default function DashboardPage() {
     toast.success('Logged out successfully.');
   };
 
+  // Helper to build shopId query param — never send empty string
+  const shopQS = activeShop?.id ? `shopId=${activeShop.id}` : '';
+
   // Data fetching
   const { data: inventoryData } = useQuery({
-    queryKey: ['inventory', activeShop?.id],
-    queryFn: () => fetch(`/api/inventory?shopId=${activeShop?.id || ''}`).then(r => r.json()),
+    queryKey: ['inventory', activeShop?.id ?? 'null'],
+    queryFn: () => fetch(`/api/inventory${shopQS ? '?' + shopQS : ''}`).then(r => r.json()),
     enabled: !!activeShop,
   });
   const { data: salesData } = useQuery({
-    queryKey: ['sales', activeShop?.id],
-    queryFn: () => fetch(`/api/sales?shopId=${activeShop?.id || ''}`).then(r => r.json()),
+    queryKey: ['sales', activeShop?.id ?? 'null'],
+    queryFn: () => fetch(`/api/sales${shopQS ? '?' + shopQS : ''}`).then(r => r.json()),
     enabled: !!activeShop,
   });
   const { data: purchasesData } = useQuery({
-    queryKey: ['purchases', activeShop?.id],
-    queryFn: () => fetch(`/api/purchases?shopId=${activeShop?.id || ''}`).then(r => r.json()),
+    queryKey: ['purchases', activeShop?.id ?? 'null'],
+    queryFn: () => fetch(`/api/purchases${shopQS ? '?' + shopQS : ''}`).then(r => r.json()),
     enabled: !!activeShop,
   });
   const { data: invoicesData } = useQuery({
-    queryKey: ['invoices', activeShop?.id],
-    queryFn: () => fetch(`/api/invoices?shopId=${activeShop?.id || ''}`).then(r => r.json()),
+    queryKey: ['invoices', activeShop?.id ?? 'null'],
+    queryFn: () => fetch(`/api/invoices${shopQS ? '?' + shopQS : ''}`).then(r => r.json()),
     enabled: !!activeShop,
   });
   const { data: logsData } = useQuery({
@@ -141,19 +144,19 @@ export default function DashboardPage() {
     queryFn: () => fetch('/api/ai-logs').then(r => r.json()),
   });
   const { data: insightsData, isLoading: isInsightsLoading } = useQuery({
-    queryKey: ['business-insights', activeShop?.id],
-    queryFn: () => fetch(`/api/business-insights?shopId=${activeShop?.id || ''}`).then(r => r.json()),
+    queryKey: ['business-insights', activeShop?.id ?? 'null'],
+    queryFn: () => fetch(`/api/business-insights${shopQS ? '?' + shopQS : ''}`).then(r => r.json()),
     enabled: !!activeShop,
   });
 
   const refreshAll = useCallback(() => {
-    if (!activeShop?.id) return;
-    queryClient.invalidateQueries({ queryKey: ['inventory', activeShop.id] });
-    queryClient.invalidateQueries({ queryKey: ['sales', activeShop.id] });
-    queryClient.invalidateQueries({ queryKey: ['purchases', activeShop.id] });
-    queryClient.invalidateQueries({ queryKey: ['invoices', activeShop.id] });
+    const shopKey = activeShop?.id ?? 'null';
+    queryClient.invalidateQueries({ queryKey: ['inventory', shopKey] });
+    queryClient.invalidateQueries({ queryKey: ['sales', shopKey] });
+    queryClient.invalidateQueries({ queryKey: ['purchases', shopKey] });
+    queryClient.invalidateQueries({ queryKey: ['invoices', shopKey] });
     queryClient.invalidateQueries({ queryKey: ['ai-logs'] });
-    queryClient.invalidateQueries({ queryKey: ['business-insights', activeShop.id] });
+    queryClient.invalidateQueries({ queryKey: ['business-insights', shopKey] });
   }, [queryClient, activeShop]);
 
   const handleSubmit = useCallback(async (inputText: string, source: 'text' | 'voice') => {
@@ -195,11 +198,7 @@ export default function DashboardPage() {
 
       setLastResponse(data);
 
-      if (data.promptProductCreation) {
-        setSuggestedProductData(data.suggestedProduct);
-        setIsProductSheetOpen(true);
-        toast.info('New product detected. Complete onboarding to execute command.');
-      } else if (data.clarificationNeeded) {
+      if (data.clarificationNeeded) {
         setPendingContext(data.pendingContext);
         toast.warning('Clarification needed for AI execution');
       } else {

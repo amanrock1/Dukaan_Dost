@@ -41,7 +41,9 @@ export async function POST(request: NextRequest) {
   };
 
   try {
-    const { input, source = 'text', context = null, shopId = null } = await request.json();
+    const { input, source = 'text', context = null, shopId: rawShopId = null } = await request.json();
+    // Normalize: empty string "" is treated the same as null (guest/global shop)
+    const shopId: string | null = rawShopId && rawShopId.trim() !== '' ? rawShopId : null;
 
     if (!input || typeof input !== 'string' || input.trim().length === 0) {
       return NextResponse.json({ error: 'Please provide valid input.' }, { status: 400 });
@@ -185,40 +187,16 @@ export async function POST(request: NextRequest) {
 
       // Step 3: Product Matching and Inventory Validation
       const valStartTime = Date.now();
-      const matchedProduct = await findMatchingProduct(entities.productName, shopId);
-      const valTime = Date.now() - valStartTime;
+      let matchedProduct = await findMatchingProduct(entities.productName, shopId);
+      let valTime = Date.now() - valStartTime;
 
       if (!matchedProduct) {
-        updateAgent('Inventory Agent', 'error');
-        updateAgent('Planner Agent', 'error');
-        
-        steps.push({
-          name: 'Inventory Validation',
-          status: 'error',
-          timeMs: valTime,
-          details: `Product catalog mismatch. Could not resolve product matching "${entities.productName}".`,
-        });
-
-        const actionMetadata = { steps, agentActivities, thinking: { intent: classification.intent, entities } };
-        await logAIAction({
-          rawInput: trimmed,
-          detectedIntent: classification.intent,
-          extractedEntities: entities as unknown as Record<string, unknown>,
-          actionTaken: 'failed_validation',
-          status: 'error',
-          errorMessage: `Product not found: ${entities.productName}`,
-          metadata: actionMetadata,
-        });
-
-        const allProducts = await db.product.findMany({
-          where: shopId ? { shopId } : { shopId: null },
-          select: { name: true }
-        });
-        const productList = allProducts.map(p => p.name).slice(0, 10).join(', ');
+        // Automatically create the product on the fly!
+        const prodName = entities.productName || 'New Product';
+        const capitalizedName = prodName.charAt(0).toUpperCase() + prodName.slice(1);
 
         // Guess category & GST
-        const prodName = entities.productName || 'New Product';
-        let guessedCategory = 'General';
+        let guessedCategory = 'Groceries';
         if (/headphone|earphone|bud|laptop|mouse|keyboard|monitor|phone|usb|printer|cable|electronic/i.test(prodName)) {
           guessedCategory = 'Electronics';
         } else if (/tablet|syrup|paracetamol|medicine|gel|cream/i.test(prodName)) {
@@ -233,44 +211,40 @@ export async function POST(request: NextRequest) {
         if (guessedCategory === 'Stationery') guessedGst = 5;
         if (guessedCategory === 'Pharmacy') guessedGst = 12;
 
-        return NextResponse.json({
-          response: `I couldn't find "${prodName}" in your catalog. Would you like me to create it?`,
-          intent: classification.intent,
-          promptProductCreation: true,
-          suggestedProduct: {
-            name: prodName,
+        const quantity = entities.quantity || 1;
+        const unitPrice = entities.unitPrice || 20;
+
+        matchedProduct = await db.product.create({
+          data: {
+            name: capitalizedName,
             category: guessedCategory,
-            unitPrice: entities.unitPrice || 1000,
-            gstRate: guessedGst,
-            currentStock: classification.intent === 'record_sale' ? (entities.quantity || 1) + 10 : 20,
-            quantity: entities.quantity || 1,
-            customerName: entities.customerName,
-            supplier: entities.supplier,
-            intent: classification.intent,
-            originalCommand: trimmed,
-          },
-          steps,
-          agents: agentActivities,
-          thinking: {
-            intent: classification.intent,
-            confidence: classification.confidence,
-            entities,
-            validation: 'Product missing from database catalog. Prompted user for product creation.',
-            reasoning: `Extracted product name "${prodName}" is missing from catalog. Triggering AI Product Onboarding Drawer.`,
-          },
+            unit: 'pcs',
+            unitPrice: Number(unitPrice),
+            gstRate: Number(guessedGst),
+            lowStockThreshold: 5,
+            currentStock: classification.intent === 'record_sale' ? quantity + 50 : quantity,
+            shopId: shopId || null,
+          }
+        });
+
+        steps.push({
+          name: 'Inventory Validation',
+          status: 'success',
+          timeMs: valTime,
+          details: `Product "${capitalizedName}" automatically registered in catalog (Guessed Category: ${guessedCategory}, Stock Initialized).`,
+        });
+      } else {
+        steps.push({
+          name: 'Inventory Validation',
+          status: 'success',
+          timeMs: valTime,
+          details: `Successfully matched "${entities.productName}" to catalog item "${matchedProduct.name}". Current Stock: ${matchedProduct.currentStock} units.`,
         });
       }
 
       // Catalog prices
       const unitPrice = entities.unitPrice || matchedProduct.unitPrice;
       const quantity = entities.quantity || 1;
-
-      steps.push({
-        name: 'Inventory Validation',
-        status: 'success',
-        timeMs: valTime,
-        details: `Successfully matched "${entities.productName}" to catalog item "${matchedProduct.name}". Current Stock: ${matchedProduct.currentStock} units.`,
-      });
 
       // Step 4: Business Rule and GST Validation
       const bizStartTime = Date.now();

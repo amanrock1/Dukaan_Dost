@@ -176,23 +176,25 @@ function fallbackExtract(input: string): ExtractedEntities {
   return { productName, quantity, unitPrice, amount: null, customerName: null, supplier: null, missingFields };
 }
 
-export async function findMatchingProduct(productName: string | null, shopId?: string | null): Promise<{ id: string; name: string; unitPrice: number; gstRate: number; currentStock: number } | null> {
+export async function findMatchingProduct(productName: string | null, shopId?: string | null): Promise<{ id: string; name: string; unitPrice: number; gstRate: number; currentStock: number; lowStockThreshold: number } | null> {
   if (!productName) return null;
+  // Normalize empty string to null (guest shop stores data with shopId: null)
+  const resolvedShopId = shopId && shopId.trim() !== '' ? shopId : null;
 
   const products = await db.product.findMany({
-    where: shopId ? { shopId } : { shopId: null }
+    where: resolvedShopId ? { shopId: resolvedShopId } : { shopId: null }
   });
   
   // Exact match first
   const exact = products.find(p => p.name.toLowerCase() === productName.toLowerCase());
-  if (exact) return { id: exact.id, name: exact.name, unitPrice: exact.unitPrice, gstRate: exact.gstRate, currentStock: exact.currentStock };
+  if (exact) return { id: exact.id, name: exact.name, unitPrice: exact.unitPrice, gstRate: exact.gstRate, currentStock: exact.currentStock, lowStockThreshold: exact.lowStockThreshold };
 
   // Partial match
   const partial = products.find(p => 
     p.name.toLowerCase().includes(productName.toLowerCase()) || 
     productName.toLowerCase().includes(p.name.toLowerCase())
   );
-  if (partial) return { id: partial.id, name: partial.name, unitPrice: partial.unitPrice, gstRate: partial.gstRate, currentStock: partial.currentStock };
+  if (partial) return { id: partial.id, name: partial.name, unitPrice: partial.unitPrice, gstRate: partial.gstRate, currentStock: partial.currentStock, lowStockThreshold: partial.lowStockThreshold };
 
   // Word overlap match
   const inputWords = productName.toLowerCase().split(/\s+/);
@@ -207,7 +209,7 @@ export async function findMatchingProduct(productName: string | null, shopId?: s
     }
   }
   if (bestMatch && bestScore > 0) {
-    return { id: bestMatch.id, name: bestMatch.name, unitPrice: bestMatch.unitPrice, gstRate: bestMatch.gstRate, currentStock: bestMatch.currentStock };
+    return { id: bestMatch.id, name: bestMatch.name, unitPrice: bestMatch.unitPrice, gstRate: bestMatch.gstRate, currentStock: bestMatch.currentStock, lowStockThreshold: bestMatch.lowStockThreshold };
   }
 
   return null;
