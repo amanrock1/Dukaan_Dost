@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
   };
 
   try {
-    const { input, source = 'text', context = null } = await request.json();
+    const { input, source = 'text', context = null, shopId = null } = await request.json();
 
     if (!input || typeof input !== 'string' || input.trim().length === 0) {
       return NextResponse.json({ error: 'Please provide valid input.' }, { status: 400 });
@@ -185,7 +185,7 @@ export async function POST(request: NextRequest) {
 
       // Step 3: Product Matching and Inventory Validation
       const valStartTime = Date.now();
-      const matchedProduct = await findMatchingProduct(entities.productName);
+      const matchedProduct = await findMatchingProduct(entities.productName, shopId);
       const valTime = Date.now() - valStartTime;
 
       if (!matchedProduct) {
@@ -210,7 +210,10 @@ export async function POST(request: NextRequest) {
           metadata: actionMetadata,
         });
 
-        const allProducts = await db.product.findMany({ select: { name: true } });
+        const allProducts = await db.product.findMany({
+          where: shopId ? { shopId } : { shopId: null },
+          select: { name: true }
+        });
         const productList = allProducts.map(p => p.name).slice(0, 10).join(', ');
 
         // Guess category & GST
@@ -325,12 +328,12 @@ export async function POST(request: NextRequest) {
       const dbStartTime = Date.now();
       let result;
       if (classification.intent === 'record_sale') {
-        result = await recordSale(matchedProduct.id, quantity, unitPrice, entities.customerName);
+        result = await recordSale(matchedProduct.id, quantity, unitPrice, entities.customerName, shopId);
         if (result.success && result.saleId) {
           await db.sale.update({ where: { id: result.saleId }, data: { rawInput: trimmed, source } });
         }
       } else {
-        result = await recordPurchase(matchedProduct.id, quantity, unitPrice, entities.supplier);
+        result = await recordPurchase(matchedProduct.id, quantity, unitPrice, entities.supplier, shopId);
         if (result.success && result.purchaseId) {
           await db.purchase.update({ where: { id: result.purchaseId }, data: { rawInput: trimmed, source } });
         }
@@ -418,7 +421,7 @@ export async function POST(request: NextRequest) {
       });
 
       const checkStartTime = Date.now();
-      const result = await checkStock(entities.productName || undefined);
+      const result = await checkStock(entities.productName || undefined, shopId);
       const checkTime = Date.now() - checkStartTime;
 
       steps.push({
@@ -465,7 +468,10 @@ export async function POST(request: NextRequest) {
       
       const dbStartTime = Date.now();
       const lastSale = await db.sale.findFirst({
-        where: { invoice: null },
+        where: {
+          invoice: null,
+          shopId: shopId ? shopId : null
+        },
         orderBy: { timestamp: 'desc' },
         include: { product: true },
       });

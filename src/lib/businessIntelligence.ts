@@ -17,9 +17,12 @@ export interface Recommendation {
   category: string;
 }
 
-export async function getBusinessInsightsAndRecommendations() {
+export async function getBusinessInsightsAndRecommendations(shopId?: string | null) {
   try {
+    const filter = shopId ? { shopId } : { shopId: null };
+
     const products = await db.product.findMany({
+      where: filter,
       include: {
         sales: true,
         purchases: true,
@@ -27,16 +30,22 @@ export async function getBusinessInsightsAndRecommendations() {
     });
 
     const sales = await db.sale.findMany({
+      where: filter,
       orderBy: { timestamp: 'desc' },
       include: { product: true },
     });
 
     const purchases = await db.purchase.findMany({
+      where: filter,
       orderBy: { timestamp: 'desc' },
       include: { product: true },
     });
 
-    const invoices = await db.invoice.findMany();
+    const invoices = await db.invoice.findMany({
+      where: {
+        sale: filter
+      }
+    });
 
     const insights: BusinessInsight[] = [];
     const recommendations: Recommendation[] = [];

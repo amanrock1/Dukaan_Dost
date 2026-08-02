@@ -13,7 +13,8 @@ export async function recordSale(
   productId: string,
   quantity: number,
   unitPrice: number,
-  customerName?: string | null
+  customerName?: string | null,
+  shopId?: string | null
 ): Promise<InventoryResult> {
   try {
     const product = await db.product.findUnique({ where: { id: productId } });
@@ -45,6 +46,7 @@ export async function recordSale(
         source: 'text',
         rawInput: '',
         customerName: customerName || null,
+        shopId: shopId || null,
       },
     });
 
@@ -72,7 +74,8 @@ export async function recordPurchase(
   productId: string,
   quantity: number,
   unitPrice: number,
-  supplier?: string | null
+  supplier?: string | null,
+  shopId?: string | null
 ): Promise<InventoryResult> {
   try {
     const product = await db.product.findUnique({ where: { id: productId } });
@@ -91,6 +94,7 @@ export async function recordPurchase(
         source: 'text',
         rawInput: '',
         supplier: supplier || null,
+        shopId: shopId || null,
       },
     });
 
@@ -114,10 +118,11 @@ export async function recordPurchase(
   }
 }
 
-export async function checkStock(productName?: string): Promise<InventoryResult> {
+export async function checkStock(productName?: string, shopId?: string | null): Promise<InventoryResult> {
   try {
+    const filter = shopId ? { shopId } : { shopId: null };
     if (productName) {
-      const products = await db.product.findMany();
+      const products = await db.product.findMany({ where: filter });
       const match = products.find(p =>
         p.name.toLowerCase().includes(productName.toLowerCase()) ||
         productName.toLowerCase().includes(p.name.toLowerCase())
@@ -137,6 +142,7 @@ export async function checkStock(productName?: string): Promise<InventoryResult>
 
     // Return all products summary
     const products = await db.product.findMany({
+      where: filter,
       orderBy: { category: 'asc' },
     });
     const lines = products.map(p => {

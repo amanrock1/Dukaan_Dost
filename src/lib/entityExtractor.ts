@@ -176,10 +176,12 @@ function fallbackExtract(input: string): ExtractedEntities {
   return { productName, quantity, unitPrice, amount: null, customerName: null, supplier: null, missingFields };
 }
 
-export async function findMatchingProduct(productName: string | null): Promise<{ id: string; name: string; unitPrice: number; gstRate: number; currentStock: number } | null> {
+export async function findMatchingProduct(productName: string | null, shopId?: string | null): Promise<{ id: string; name: string; unitPrice: number; gstRate: number; currentStock: number } | null> {
   if (!productName) return null;
 
-  const products = await db.product.findMany();
+  const products = await db.product.findMany({
+    where: shopId ? { shopId } : { shopId: null }
+  });
   
   // Exact match first
   const exact = products.find(p => p.name.toLowerCase() === productName.toLowerCase());

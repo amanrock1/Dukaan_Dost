@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { StatsCards } from '@/components/dashboard/StatsCards';
@@ -15,10 +15,11 @@ import { InsightsCards } from '@/components/dashboard/InsightsCards';
 import { CommandPalette } from '@/components/dashboard/CommandPalette';
 import { BusinessInsightsTab } from '@/components/dashboard/BusinessInsightsTab';
 import { CreateProductSheet } from '@/components/dashboard/CreateProductSheet';
+import LoginScreen from '@/components/dashboard/LoginScreen';
 import { toast } from 'sonner';
 import {
   Package, ShoppingCart, ArrowDownToLine, FileText, Brain, Sparkles, LineChart,
-  MessageSquare, Cpu, Store, ChevronDown, Plus
+  MessageSquare, Cpu, Store, ChevronDown, Plus, LogOut
 } from 'lucide-react';
 
 export default function DashboardPage() {
@@ -30,40 +31,84 @@ export default function DashboardPage() {
   const [isProductSheetOpen, setIsProductSheetOpen] = useState(false);
   const [suggestedProductData, setSuggestedProductData] = useState<any>(null);
 
+  // Auth States
+  const [session, setSession] = useState<{ user: { id: string; username: string; name: string | null }; shops: any[] } | null>(null);
+  const [activeShop, setActiveShop] = useState<any | null>(null);
+  const [shopDropdownOpen, setShopDropdownOpen] = useState(false);
+
+  useEffect(() => {
+    const savedSession = localStorage.getItem('dukaandost_session');
+    const savedShop = localStorage.getItem('dukaandost_active_shop');
+    if (savedSession) {
+      const parsedSession = JSON.parse(savedSession);
+      setSession(parsedSession);
+      if (savedShop) {
+        setActiveShop(JSON.parse(savedShop));
+      } else if (parsedSession.shops && parsedSession.shops.length > 0) {
+        setActiveShop(parsedSession.shops[0]);
+        localStorage.setItem('dukaandost_active_shop', JSON.stringify(parsedSession.shops[0]));
+      }
+    }
+  }, []);
+
+  const handleLoginSuccess = (data: any) => {
+    localStorage.setItem('dukaandost_session', JSON.stringify(data));
+    setSession(data);
+    if (data.shops && data.shops.length > 0) {
+      setActiveShop(data.shops[0]);
+      localStorage.setItem('dukaandost_active_shop', JSON.stringify(data.shops[0]));
+    }
+    toast.success('Logged in successfully!');
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('dukaandost_session');
+    localStorage.removeItem('dukaandost_active_shop');
+    setSession(null);
+    setActiveShop(null);
+    toast.success('Logged out successfully.');
+  };
+
   // Data fetching
   const { data: inventoryData } = useQuery({
-    queryKey: ['inventory'],
-    queryFn: () => fetch('/api/inventory').then(r => r.json()),
+    queryKey: ['inventory', activeShop?.id],
+    queryFn: () => fetch(`/api/inventory?shopId=${activeShop?.id || ''}`).then(r => r.json()),
+    enabled: !!activeShop,
   });
   const { data: salesData } = useQuery({
-    queryKey: ['sales'],
-    queryFn: () => fetch('/api/sales').then(r => r.json()),
+    queryKey: ['sales', activeShop?.id],
+    queryFn: () => fetch(`/api/sales?shopId=${activeShop?.id || ''}`).then(r => r.json()),
+    enabled: !!activeShop,
   });
   const { data: purchasesData } = useQuery({
-    queryKey: ['purchases'],
-    queryFn: () => fetch('/api/purchases').then(r => r.json()),
+    queryKey: ['purchases', activeShop?.id],
+    queryFn: () => fetch(`/api/purchases?shopId=${activeShop?.id || ''}`).then(r => r.json()),
+    enabled: !!activeShop,
   });
   const { data: invoicesData } = useQuery({
-    queryKey: ['invoices'],
-    queryFn: () => fetch('/api/invoices').then(r => r.json()),
+    queryKey: ['invoices', activeShop?.id],
+    queryFn: () => fetch(`/api/invoices?shopId=${activeShop?.id || ''}`).then(r => r.json()),
+    enabled: !!activeShop,
   });
   const { data: logsData } = useQuery({
     queryKey: ['ai-logs'],
     queryFn: () => fetch('/api/ai-logs').then(r => r.json()),
   });
   const { data: insightsData, isLoading: isInsightsLoading } = useQuery({
-    queryKey: ['business-insights'],
-    queryFn: () => fetch('/api/business-insights').then(r => r.json()),
+    queryKey: ['business-insights', activeShop?.id],
+    queryFn: () => fetch(`/api/business-insights?shopId=${activeShop?.id || ''}`).then(r => r.json()),
+    enabled: !!activeShop,
   });
 
   const refreshAll = useCallback(() => {
-    queryClient.invalidateQueries({ queryKey: ['inventory'] });
-    queryClient.invalidateQueries({ queryKey: ['sales'] });
-    queryClient.invalidateQueries({ queryKey: ['purchases'] });
-    queryClient.invalidateQueries({ queryKey: ['invoices'] });
+    if (!activeShop?.id) return;
+    queryClient.invalidateQueries({ queryKey: ['inventory', activeShop.id] });
+    queryClient.invalidateQueries({ queryKey: ['sales', activeShop.id] });
+    queryClient.invalidateQueries({ queryKey: ['purchases', activeShop.id] });
+    queryClient.invalidateQueries({ queryKey: ['invoices', activeShop.id] });
     queryClient.invalidateQueries({ queryKey: ['ai-logs'] });
-    queryClient.invalidateQueries({ queryKey: ['business-insights'] });
-  }, [queryClient]);
+    queryClient.invalidateQueries({ queryKey: ['business-insights', activeShop.id] });
+  }, [queryClient, activeShop]);
 
   const handleSubmit = useCallback(async (inputText: string, source: 'text' | 'voice') => {
     setIsLoading(true);
@@ -87,7 +132,7 @@ export default function DashboardPage() {
       const res = await fetch('/api/process-request', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ input: inputText, source, context: pendingContext }),
+        body: JSON.stringify({ input: inputText, source, context: pendingContext, shopId: activeShop?.id }),
       });
       const data = await res.json();
 
@@ -131,7 +176,7 @@ export default function DashboardPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [pendingContext, refreshAll]);
+  }, [pendingContext, refreshAll, activeShop]);
 
   const handleApplyRecommendation = useCallback((actionText: string) => {
     setInput(actionText);
@@ -168,6 +213,37 @@ export default function DashboardPage() {
     { label: '⌘4 Generate Invoice', value: 'generate invoice for last sale' },
   ];
 
+  if (!session) {
+    return <LoginScreen onSuccess={handleLoginSuccess} />;
+  }
+
+  const handleCreateShop = async () => {
+    const sName = prompt('Enter the name of your new shop:');
+    if (!sName || !sName.trim()) return;
+
+    try {
+      const res = await fetch('/api/auth/create-shop', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: sName, ownerId: session.user.id }),
+      });
+      const data = await res.json();
+      if (data.success && data.shop) {
+        const updatedShops = [...session.shops, data.shop];
+        const updatedSession = { ...session, shops: updatedShops };
+        localStorage.setItem('dukaandost_session', JSON.stringify(updatedSession));
+        setSession(updatedSession);
+        setActiveShop(data.shop);
+        localStorage.setItem('dukaandost_active_shop', JSON.stringify(data.shop));
+        toast.success(`Created shop "${sName}"!`);
+      } else {
+        toast.error(data.error || 'Failed to create shop.');
+      }
+    } catch (err) {
+      toast.error('Network error creating shop.');
+    }
+  };
+
   return (
     <div className="min-h-screen flex flex-col bg-[#09090b] text-zinc-100 font-[family-name:var(--font-plus-jakarta)] selection:bg-emerald-500/30 selection:text-emerald-300">
       
@@ -176,17 +252,58 @@ export default function DashboardPage() {
         <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-2.5 flex items-center justify-between">
           
           {/* Store switcher */}
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 cursor-pointer hover:bg-zinc-800/60 p-1.5 rounded-lg transition-colors border border-zinc-800">
-              <div className="w-6 h-6 rounded-md bg-emerald-600 flex items-center justify-center text-white font-bold text-xs">
-                D
+          <div className="flex items-center gap-3 relative">
+            <div 
+              onClick={() => setShopDropdownOpen(!shopDropdownOpen)}
+              className="flex items-center gap-2 cursor-pointer hover:bg-zinc-800/60 p-1.5 rounded-lg transition-colors border border-zinc-800"
+            >
+              <div className="w-6 h-6 rounded-md bg-emerald-600 flex items-center justify-center text-white font-bold text-xs uppercase">
+                {(activeShop?.name || 'D')[0]}
               </div>
               <div className="flex items-center gap-1.5">
-                <span className="text-xs font-semibold text-white">Raj General Store</span>
-                <span className="text-[10px] text-zinc-500 font-mono">Main Branch</span>
+                <span className="text-xs font-semibold text-white">{activeShop?.name || 'My Shop'}</span>
+                <span className="text-[10px] text-zinc-500 font-mono">Workspace</span>
                 <ChevronDown className="w-3.5 h-3.5 text-zinc-500" />
               </div>
             </div>
+
+            {shopDropdownOpen && (
+              <div className="absolute top-11 left-0 w-56 bg-zinc-950 border border-zinc-800 rounded-xl shadow-2xl p-1.5 z-50 space-y-1 font-sans">
+                <div className="px-2 py-1.5 text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
+                  Switch Workspace
+                </div>
+                {session.shops.map((s: any) => (
+                  <button
+                    key={s.id}
+                    onClick={() => {
+                      setActiveShop(s);
+                      localStorage.setItem('dukaandost_active_shop', JSON.stringify(s));
+                      setShopDropdownOpen(false);
+                      toast.success(`Switched to ${s.name}`);
+                    }}
+                    className={`w-full text-left px-2.5 py-1.5 text-xs rounded-lg transition-colors flex items-center justify-between ${
+                      activeShop?.id === s.id 
+                        ? 'bg-emerald-950/40 text-emerald-400 font-semibold' 
+                        : 'text-zinc-300 hover:bg-zinc-900 hover:text-white'
+                    }`}
+                  >
+                    <span>{s.name}</span>
+                    {activeShop?.id === s.id && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />}
+                  </button>
+                ))}
+                <div className="border-t border-zinc-900 my-1" />
+                <button
+                  onClick={() => {
+                    setShopDropdownOpen(false);
+                    handleCreateShop();
+                  }}
+                  className="w-full text-left px-2.5 py-1.5 text-xs text-emerald-400 hover:bg-zinc-900 rounded-lg transition-colors font-medium flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Create new shop</span>
+                </button>
+              </div>
+            )}
 
             <div className="hidden md:flex items-center gap-2 border-l border-zinc-800 pl-3">
               <span className="w-2 h-2 rounded-full bg-emerald-500" />
@@ -200,12 +317,31 @@ export default function DashboardPage() {
 
             <button
               onClick={() => {
+                setSuggestedProductData(null);
+                setIsProductSheetOpen(true);
+              }}
+              className="hidden sm:flex items-center gap-1.5 h-8 px-3 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white text-xs font-semibold transition-colors shadow-sm border border-zinc-800 cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5 text-zinc-400" />
+              <span>Add Product</span>
+            </button>
+
+            <button
+              onClick={() => {
                 setInput('sold 1 Wireless Keyboard for 1500');
               }}
-              className="hidden sm:flex items-center gap-1.5 h-8 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold transition-colors shadow-sm"
+              className="hidden sm:flex items-center gap-1.5 h-8 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold transition-colors shadow-sm cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>New Sale</span>
+            </button>
+
+            <button
+              onClick={handleLogout}
+              className="p-1.5 rounded-lg border border-zinc-800 hover:bg-zinc-900 text-zinc-400 hover:text-red-400 transition-colors cursor-pointer"
+              title="Sign Out"
+            >
+              <LogOut className="w-4 h-4" />
             </button>
           </div>
         </div>
@@ -343,6 +479,7 @@ export default function DashboardPage() {
           setLastResponse(res);
           refreshAll();
         }}
+        shopId={activeShop?.id}
       />
     </div>
   );

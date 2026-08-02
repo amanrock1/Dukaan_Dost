@@ -24,6 +24,7 @@ interface CreateProductSheetProps {
     };
   } | null;
   onSuccessExecute: (response: any) => void;
+  shopId?: string | null;
 }
 
 export function CreateProductSheet({
@@ -31,6 +32,7 @@ export function CreateProductSheet({
   onClose,
   suggestedData,
   onSuccessExecute,
+  shopId = null,
 }: CreateProductSheetProps) {
   const [name, setName] = useState('');
   const [category, setCategory] = useState('Electronics');
@@ -45,12 +47,19 @@ export function CreateProductSheet({
     if (suggestedData) {
       setName(suggestedData.name || '');
       setCategory(suggestedData.suggestedCategory || 'Electronics');
-      setUnitPrice(suggestedData.suggestedUnitPrice || 100);
+      setUnitPrice(suggestedData.suggestedUnitPrice || 0);
       setGstRate(suggestedData.suggestedGstRate || 18);
+    } else {
+      setName('');
+      setCategory('Electronics');
+      setUnitPrice(0);
+      setGstRate(18);
+      setInitialStock(10);
+      setLowStockThreshold(5);
     }
-  }, [suggestedData]);
+  }, [suggestedData, isOpen]);
 
-  if (!isOpen || !suggestedData) return null;
+  if (!isOpen) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -61,6 +70,11 @@ export function CreateProductSheet({
 
     setIsLoading(true);
     try {
+      const pendingExecution = suggestedData?.pendingExecution || {
+        action: 'purchase',
+        quantity: 0,
+      };
+
       const res = await fetch('/api/inventory/create-and-execute', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -74,7 +88,8 @@ export function CreateProductSheet({
             lowStockThreshold: Number(lowStockThreshold),
             currentStock: Number(initialStock),
           },
-          execution: suggestedData.pendingExecution,
+          execution: pendingExecution,
+          shopId,
         }),
       });
 
@@ -82,8 +97,12 @@ export function CreateProductSheet({
       if (!res.ok || data.error) {
         toast.error(data.error || 'Failed to onboard product.');
       } else {
-        toast.success(`Product "${name}" onboarded & ${suggestedData.pendingExecution.action} command executed!`);
-        onSuccessExecute(data.result);
+        toast.success(
+          suggestedData
+            ? `Product "${name}" onboarded & ${pendingExecution.action} command executed!`
+            : `Product "${name}" successfully added to catalog!`
+        );
+        onSuccessExecute(data);
         onClose();
       }
     } catch (err) {
@@ -107,20 +126,24 @@ export function CreateProductSheet({
         <div className="space-y-4">
           <div className="flex items-center gap-2">
             <div className="p-2 bg-emerald-950 border border-emerald-800 rounded-xl">
-              <Sparkles className="w-5 h-5 text-emerald-400" />
+              {suggestedData ? <Sparkles className="w-5 h-5 text-emerald-400" /> : <Package className="w-5 h-5 text-emerald-400" />}
             </div>
             <div>
-              <h3 className="text-base font-extrabold text-white">AI Product Onboarding</h3>
-              <p className="text-xs text-slate-400">Item not in catalog. Pre-filled guesses derived from intent.</p>
+              <h3 className="text-base font-extrabold text-white">{suggestedData ? 'AI Product Onboarding' : 'Create Product SKU'}</h3>
+              <p className="text-xs text-slate-400">
+                {suggestedData ? 'Item not in catalog. Pre-filled guesses derived from intent.' : 'Manually enter product parameters to register item.'}
+              </p>
             </div>
           </div>
 
-          <div className="p-3 bg-emerald-950/40 border border-emerald-800/60 rounded-xl text-xs space-y-1 text-emerald-300 font-mono">
-            <p className="font-bold uppercase text-[10px] text-emerald-400">Auto-Execution Pending:</p>
-            <p>
-              Action: <span className="font-bold text-white uppercase">{suggestedData.pendingExecution.action}</span> {suggestedData.pendingExecution.quantity} units
-            </p>
-          </div>
+          {suggestedData?.pendingExecution && (
+            <div className="p-3 bg-emerald-950/40 border border-emerald-800/60 rounded-xl text-xs space-y-1 text-emerald-300 font-mono">
+              <p className="font-bold uppercase text-[10px] text-emerald-400">Auto-Execution Pending:</p>
+              <p>
+                Action: <span className="font-bold text-white uppercase">{suggestedData.pendingExecution.action}</span> {suggestedData.pendingExecution.quantity} units
+              </p>
+            </div>
+          )}
 
           <form onSubmit={handleSubmit} className="space-y-3.5 text-xs font-sans">
             <div>
