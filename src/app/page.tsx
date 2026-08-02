@@ -55,6 +55,14 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (BYPASS_LOGIN) {
+      const savedSession = localStorage.getItem('dukaandost_session');
+      if (savedSession) {
+        try {
+          setSession(JSON.parse(savedSession));
+        } catch {
+          // Keep default
+        }
+      }
       const savedActive = localStorage.getItem('dukaandost_active_shop');
       if (savedActive) {
         try {
@@ -93,6 +101,7 @@ export default function DashboardPage() {
   const handleLogout = () => {
     if (BYPASS_LOGIN) {
       localStorage.removeItem('dukaandost_active_shop');
+      localStorage.removeItem('dukaandost_session');
       toast.success('Resetting guest workspace...');
       setTimeout(() => {
         window.location.reload();
