@@ -36,6 +36,7 @@ model Sale {
   totalAmount Float   @default(0) @map("total_amount")
   source     String   @default("text")
   rawInput   String   @map("raw_input")
+  customerName String?  @map("customer_name")
   timestamp  DateTime @default(now())
 
   invoice    Invoice?
@@ -52,6 +53,7 @@ model Purchase {
   amount     Float
   source     String   @default("text")
   rawInput   String   @map("raw_input")
+  supplier   String?
   timestamp  DateTime @default(now())
 
   @@map("purchases")
@@ -77,6 +79,7 @@ model AILog {
   actionTaken       String   @map("action_taken")
   status            String   @default("success")
   errorMessage      String?  @map("error_message")
+  metadata          String?  @map("metadata")
 
   @@map("ai_logs")
 }

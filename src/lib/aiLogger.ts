@@ -7,6 +7,7 @@ export async function logAIAction(params: {
   actionTaken: string;
   status: 'success' | 'error' | 'clarification_needed';
   errorMessage?: string;
+  metadata?: Record<string, unknown>;
 }) {
   try {
     await db.aILog.create({
@@ -17,6 +18,7 @@ export async function logAIAction(params: {
         actionTaken: params.actionTaken,
         status: params.status,
         errorMessage: params.errorMessage,
+        metadata: params.metadata ? JSON.stringify(params.metadata) : null,
       },
     });
   } catch (error) {

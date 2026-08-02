@@ -12,7 +12,8 @@ export interface InventoryResult {
 export async function recordSale(
   productId: string,
   quantity: number,
-  unitPrice: number
+  unitPrice: number,
+  customerName?: string | null
 ): Promise<InventoryResult> {
   try {
     const product = await db.product.findUnique({ where: { id: productId } });
@@ -43,6 +44,7 @@ export async function recordSale(
         totalAmount,
         source: 'text',
         rawInput: '',
+        customerName: customerName || null,
       },
     });
 
@@ -52,9 +54,10 @@ export async function recordSale(
       data: { currentStock: newStock },
     });
 
+    const customerInfo = customerName ? ` to ${customerName}` : '';
     return {
       success: true,
-      message: `Sale recorded: ${quantity} x ${product.name} at ₹${unitPrice.toLocaleString('en-IN')} each = ₹${totalAmount.toLocaleString('en-IN')} (incl. GST). Stock: ${product.currentStock} → ${newStock}.`,
+      message: `Sale recorded${customerInfo}: ${quantity} x ${product.name} at ₹${unitPrice.toLocaleString('en-IN')} each = ₹${totalAmount.toLocaleString('en-IN')} (incl. GST). Stock: ${product.currentStock} → ${newStock}.`,
       saleId: sale.id,
       stockAfter: newStock,
       lowStockAlert: newStock <= product.lowStockThreshold,
@@ -68,7 +71,8 @@ export async function recordSale(
 export async function recordPurchase(
   productId: string,
   quantity: number,
-  unitPrice: number
+  unitPrice: number,
+  supplier?: string | null
 ): Promise<InventoryResult> {
   try {
     const product = await db.product.findUnique({ where: { id: productId } });
@@ -86,6 +90,7 @@ export async function recordPurchase(
         amount,
         source: 'text',
         rawInput: '',
+        supplier: supplier || null,
       },
     });
 
@@ -95,9 +100,10 @@ export async function recordPurchase(
       data: { currentStock: newStock },
     });
 
+    const supplierInfo = supplier ? ` from ${supplier}` : '';
     return {
       success: true,
-      message: `Purchase recorded: ${quantity} x ${product.name} at ₹${unitPrice.toLocaleString('en-IN')} each = ₹${amount.toLocaleString('en-IN')}. Stock: ${product.currentStock} → ${newStock}.`,
+      message: `Purchase recorded${supplierInfo}: ${quantity} x ${product.name} at ₹${unitPrice.toLocaleString('en-IN')} each = ₹${amount.toLocaleString('en-IN')}. Stock: ${product.currentStock} → ${newStock}.`,
       purchaseId: purchase.id,
       stockAfter: newStock,
       lowStockAlert: false,
@@ -134,7 +140,7 @@ export async function checkStock(productName?: string): Promise<InventoryResult>
       orderBy: { category: 'asc' },
     });
     const lines = products.map(p => {
-      const flag = p.currentStock <= p.lowStockThreshold ? ' ⚠️ LOW' : '';
+      const flag = p.currentStock <= p.lowStockThreshold ? ' (LOW STOCK)' : '';
       return `${p.name}: ${p.currentStock} ${p.unit}${flag}`;
     });
     const lowStockCount = products.filter(p => p.currentStock <= p.lowStockThreshold).length;

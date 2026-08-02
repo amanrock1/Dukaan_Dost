@@ -6,6 +6,8 @@ export interface ExtractedEntities {
   quantity: number | null;
   unitPrice: number | null;
   amount: number | null;
+  customerName: string | null;
+  supplier: string | null;
   missingFields: string[];
 }
 
@@ -16,17 +18,19 @@ Extract these entities from the input:
 - quantity: Number of items (integer)
 - unitPrice: Price per single unit (in INR, number)
 - amount: Total amount (quantity × unitPrice). If both quantity and unitPrice are given, compute it. If only total is given, try to figure out unitPrice.
+- customerName: The customer buying the product (if recording a sale, e.g., "sold 5 laptops to Aman" -> "Aman", "Rohan ko becha" -> "Rohan")
+- supplier: The supplier selling the product (if recording a purchase, e.g., "bought from Sharma Distributors" -> "Sharma Distributors", "Raj supplier se liya" -> "Raj")
 
 Rules:
 - INR amounts may be written as 40000, 40,000, ₹40000, Rs 40000, or in Hindi (chaalis hazar)
-- If quantity is missing, set to 1
+- If quantity is missing, set to null (so we can ask for clarification if needed)
 - If unitPrice is missing but amount is given and quantity is known, compute unitPrice = amount / quantity
 - If the user says "sold for X each" or "sold at X each", X is the unitPrice
 - If the user says "sold for X total" or "sold for X", X might be the total amount
-- Set missingFields to list any fields you could NOT determine
+- Set missingFields to list any fields you could NOT determine (from: productName, quantity, unitPrice)
 
 Respond in JSON format only:
-{"productName": "<name or null>", "quantity": <number or null>, "unitPrice": <number or null>, "amount": <number or null>, "missingFields": ["<field names>"]}`;
+{"productName": "<name or null>", "quantity": <number or null>, "unitPrice": <number or null>, "amount": <number or null>, "customerName": "<name or null>", "supplier": "<name or null>", "missingFields": ["<field names>"]}`;
 
 export async function extractEntities(userInput: string, intent: string): Promise<ExtractedEntities> {
   try {
@@ -45,7 +49,7 @@ export async function extractEntities(userInput: string, intent: string): Promis
     const jsonMatch = content.match(/\{[\s\S]*?\}/);
     if (jsonMatch) {
       const parsed = JSON.parse(jsonMatch[0]);
-      let { productName, quantity, unitPrice, amount, missingFields } = parsed;
+      let { productName, quantity, unitPrice, amount, customerName, supplier, missingFields } = parsed;
 
       // Compute derived values
       if (quantity && unitPrice && !amount) {
@@ -54,18 +58,87 @@ export async function extractEntities(userInput: string, intent: string): Promis
       if (quantity && amount && !unitPrice) {
         unitPrice = Math.round(amount / quantity);
       }
-      if (!quantity) {
-        quantity = 1;
-        missingFields = (missingFields || []).filter((f: string) => f !== 'quantity');
-      }
 
-      return { productName: productName || null, quantity, unitPrice, amount, missingFields: missingFields || [] };
+      const missing: string[] = [];
+      if (!productName) missing.push('productName');
+      if (quantity === null || quantity === undefined) missing.push('quantity');
+      if (unitPrice === null || unitPrice === undefined) missing.push('unitPrice');
+
+      return { 
+        productName: productName || null, 
+        quantity: quantity || null, 
+        unitPrice: unitPrice || null, 
+        amount: amount || null, 
+        customerName: customerName || null,
+        supplier: supplier || null,
+        missingFields: missing 
+      };
     }
-    return { productName: null, quantity: null, unitPrice: null, amount: null, missingFields: ['all'] };
+    return { productName: null, quantity: null, unitPrice: null, amount: null, customerName: null, supplier: null, missingFields: ['productName', 'quantity', 'unitPrice'] };
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : String(error);
     console.error('Entity extraction error:', msg);
     return fallbackExtract(userInput);
+  }
+}
+
+export async function mergeContext(previousEntities: ExtractedEntities, newInput: string, intent: string): Promise<ExtractedEntities> {
+  try {
+    const mergePrompt = `You are an AI assistant helping to complete an inventory command.
+The user previously tried to record a transaction with intent: ${intent}.
+We had extracted the following entities so far:
+${JSON.stringify(previousEntities, null, 2)}
+
+The user has now provided additional information in response to a clarification: "${newInput}"
+
+Extract the missing fields (productName, quantity, unitPrice, customerName, supplier) from this new input and merge them with the previously extracted entities.
+Return the complete, fully merged entities object in JSON format.
+
+Respond in JSON format only matching this schema:
+{"productName": "<name or null>", "quantity": <number or null>, "unitPrice": <number or null>, "amount": <number or null>, "customerName": "<name or null>", "supplier": "<name or null>", "missingFields": ["<field names>"]}`;
+
+    const response = await llmChat({
+      model: 'groq-llama3.3-70b',
+      messages: [
+        { role: 'system', content: mergePrompt },
+        { role: 'user', content: `New Input: ${newInput}` }
+      ],
+      temperature: 0.1,
+    });
+
+    const content = typeof response === 'string' ? response : response?.content || '';
+    const jsonMatch = content.match(/\{[\s\S]*?\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      let { productName, quantity, unitPrice, amount, customerName, supplier } = parsed;
+
+      // Compute derived values
+      if (quantity && unitPrice && !amount) {
+        amount = quantity * unitPrice;
+      }
+      if (quantity && amount && !unitPrice) {
+        unitPrice = Math.round(amount / quantity);
+      }
+
+      const missing: string[] = [];
+      if (!productName) missing.push('productName');
+      if (quantity === null || quantity === undefined) missing.push('quantity');
+      if (unitPrice === null || unitPrice === undefined) missing.push('unitPrice');
+
+      return { 
+        productName: productName || null, 
+        quantity: quantity || null, 
+        unitPrice: unitPrice || null, 
+        amount: amount || null, 
+        customerName: customerName || null,
+        supplier: supplier || null,
+        missingFields: missing 
+      };
+    }
+    return previousEntities;
+  } catch (error) {
+    console.error('Error merging context:', error);
+    return previousEntities;
   }
 }
 
@@ -97,9 +170,10 @@ function fallbackExtract(input: string): ExtractedEntities {
 
   const missingFields: string[] = [];
   if (!productName) missingFields.push('productName');
-  if (!unitPrice && !quantity) missingFields.push('quantity');
+  if (!quantity) missingFields.push('quantity');
+  if (!unitPrice) missingFields.push('unitPrice');
 
-  return { productName, quantity, unitPrice, amount: null, missingFields };
+  return { productName, quantity, unitPrice, amount: null, customerName: null, supplier: null, missingFields };
 }
 
 export async function findMatchingProduct(productName: string | null): Promise<{ id: string; name: string; unitPrice: number; gstRate: number; currentStock: number } | null> {
