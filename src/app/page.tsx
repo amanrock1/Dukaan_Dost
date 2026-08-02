@@ -19,7 +19,7 @@ import LoginScreen from '@/components/dashboard/LoginScreen';
 import { toast } from 'sonner';
 import {
   Package, ShoppingCart, ArrowDownToLine, FileText, Brain, Sparkles, LineChart,
-  MessageSquare, Cpu, Store, ChevronDown, Plus, LogOut
+  MessageSquare, Cpu, Store, ChevronDown, Plus, LogOut, RotateCcw
 } from 'lucide-react';
 
 export default function DashboardPage() {
@@ -31,12 +31,41 @@ export default function DashboardPage() {
   const [isProductSheetOpen, setIsProductSheetOpen] = useState(false);
   const [suggestedProductData, setSuggestedProductData] = useState<any>(null);
 
+  // Toggle this to false to re-enable credentials login
+  const BYPASS_LOGIN = true;
+
   // Auth States
-  const [session, setSession] = useState<{ user: { id: string; username: string; name: string | null }; shops: any[] } | null>(null);
-  const [activeShop, setActiveShop] = useState<any | null>(null);
+  const [session, setSession] = useState<{ user: { id: string; username: string; name: string | null }; shops: any[] } | null>(
+    BYPASS_LOGIN 
+      ? {
+          user: { id: "guest-user", username: "guest", name: "Guest Reviewer" },
+          shops: [
+            { id: "", name: "Raj General Store (Guest)" },
+            { id: "demo-shop-1", name: "Sharma Electronics (Demo)" }
+          ]
+        }
+      : null
+  );
+  const [activeShop, setActiveShop] = useState<any | null>(
+    BYPASS_LOGIN 
+      ? { id: "", name: "Raj General Store (Guest)" }
+      : null
+  );
   const [shopDropdownOpen, setShopDropdownOpen] = useState(false);
 
   useEffect(() => {
+    if (BYPASS_LOGIN) {
+      const savedActive = localStorage.getItem('dukaandost_active_shop');
+      if (savedActive) {
+        try {
+          setActiveShop(JSON.parse(savedActive));
+        } catch {
+          // Keep default
+        }
+      }
+      return;
+    }
+
     const savedSession = localStorage.getItem('dukaandost_session');
     const savedShop = localStorage.getItem('dukaandost_active_shop');
     if (savedSession) {
@@ -62,6 +91,14 @@ export default function DashboardPage() {
   };
 
   const handleLogout = () => {
+    if (BYPASS_LOGIN) {
+      localStorage.removeItem('dukaandost_active_shop');
+      toast.success('Resetting guest workspace...');
+      setTimeout(() => {
+        window.location.reload();
+      }, 800);
+      return;
+    }
     localStorage.removeItem('dukaandost_session');
     localStorage.removeItem('dukaandost_active_shop');
     setSession(null);
@@ -338,10 +375,12 @@ export default function DashboardPage() {
 
             <button
               onClick={handleLogout}
-              className="p-1.5 rounded-lg border border-zinc-800 hover:bg-zinc-900 text-zinc-400 hover:text-red-400 transition-colors cursor-pointer"
-              title="Sign Out"
+              className={`p-1.5 rounded-lg border border-zinc-800 hover:bg-zinc-900 transition-colors cursor-pointer ${
+                BYPASS_LOGIN ? 'text-zinc-400 hover:text-emerald-400' : 'text-zinc-400 hover:text-red-400'
+              }`}
+              title={BYPASS_LOGIN ? "Reset Guest Workspace" : "Sign Out"}
             >
-              <LogOut className="w-4 h-4" />
+              {BYPASS_LOGIN ? <RotateCcw className="w-4 h-4" /> : <LogOut className="w-4 h-4" />}
             </button>
           </div>
         </div>
