@@ -1,22 +1,22 @@
-# KiranaCopilot AI — Autonomous Operations Workspace for Bharat's Retailers
+# DukaanDost AI — Autonomous Operations Workspace for Bharat's Retailers
 
 [![Hackathon](https://img.shields.io/badge/Codex%20India%20Hackathon-2026-indigo.svg)](https://blockseblock.com/)
 [![Built with Next.js](https://img.shields.io/badge/Built%20with-Next.js%2016-black.svg?logo=next.js)](https://nextjs.org/)
 [![Database: Neon Postgres](https://img.shields.io/badge/Database-Neon%20Postgres-00e599.svg?logo=postgresql)](https://neon.tech/)
 [![AI Engine: Groq Llama 3.3](https://img.shields.io/badge/AI%20Engine-Llama%203.3%20%7C%20Whisper-orange.svg)](https://groq.com/)
 
-**KiranaCopilot AI** is an autonomous AI operations employee designed for small/medium retail stores and MSMEs in India. By converting unstructured voice or text inputs in English and Hindi into database actions, it manages inventory, records sales, tracks procurement, generates compliant Rule 46 GST tax invoices, and serves dynamic business insights—all through a premium, Raycast-inspired SaaS dashboard.
+**DukaanDost AI** is an autonomous AI operations employee designed for small/medium retail stores and MSMEs in India. By converting unstructured voice or text inputs in English and Hindi into database actions, it manages inventory, records sales, tracks procurement, generates compliant Rule 46 GST tax invoices, and serves dynamic business insights—all through a premium, Raycast-inspired SaaS dashboard.
 
 ---
 
-## 🚀 Why KiranaCopilot AI?
+## 🚀 Why DukaanDost AI?
 
-Traditional ERP and inventory software fail for micro-retailers (Kiranas) due to:
+Traditional ERP and inventory software fail for micro-retailers (Dukaans) due to:
 * **Complex Interfaces:** Multitudes of dense forms, dropdowns, and tabular configurations.
 * **Typing Friction:** Store owners are active and need hands-free updates on the go.
 * **Tax Compliance Overhead:** Managing GST rates, HSN codes, and compiling invoices manually is time-consuming.
 
-**KiranaCopilot AI** solves this by offering a **voice-first workspace**. An owner can call out *"Sold 5 laptops for 40,000 each to Aman"* or *"Bought 10 keyboards from supplier"*, and the AI engine plans, extracts parameters, validates stock, updates the database, and compiles a downloadable tax invoice automatically.
+**DukaanDost AI** solves this by offering a **voice-first workspace**. An owner can call out *"Sold 5 laptops for 40,000 each to Aman"* or *"Bought 10 keyboards from supplier"*, and the AI engine plans, extracts parameters, validates stock, updates the database, and compiles a downloadable tax invoice automatically.
 
 ---
 
@@ -32,7 +32,7 @@ Traditional ERP and inventory software fail for micro-retailers (Kiranas) due to
 
 ## 🧠 Agentic AI Pipeline (Orchestration Flow)
 
-KiranaCopilot AI doesn't just call a chatbot wrapper; it runs an agentic pipeline containing multiple specialized sub-agents:
+DukaanDost AI doesn't just call a chatbot wrapper; it runs an agentic pipeline containing multiple specialized sub-agents:
 
 ```mermaid
 graph TD

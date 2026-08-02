@@ -19,9 +19,9 @@ const jetBrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "KiranaCopilot AI — Autonomous Operations Workspace",
-  description: "Autonomous AI Employee & Operations System for Indian kirana stores and MSMEs. Built for Codex India 2026.",
-  keywords: ["inventory", "AI agent", "GST invoice", "retail India", "MSME", "kirana", "copilot", "autonomous", "Codex India"],
+  title: "DukaanDost AI — Autonomous Operations Workspace",
+  description: "Autonomous AI Employee & Operations System for Indian retail stores and MSMEs. Built for Codex India 2026.",
+  keywords: ["inventory", "AI agent", "GST invoice", "retail India", "MSME", "dukaandost", "copilot", "autonomous", "Codex India"],
   icons: {
     icon: "/logo.svg",
   },

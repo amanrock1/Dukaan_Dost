@@ -179,10 +179,10 @@ export default function DashboardPage() {
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2 cursor-pointer hover:bg-zinc-800/60 p-1.5 rounded-lg transition-colors border border-zinc-800">
               <div className="w-6 h-6 rounded-md bg-emerald-600 flex items-center justify-center text-white font-bold text-xs">
-                K
+                D
               </div>
               <div className="flex items-center gap-1.5">
-                <span className="text-xs font-semibold text-white">Raj Kirana Store</span>
+                <span className="text-xs font-semibold text-white">Raj General Store</span>
                 <span className="text-[10px] text-zinc-500 font-mono">Main Branch</span>
                 <ChevronDown className="w-3.5 h-3.5 text-zinc-500" />
               </div>
@@ -190,7 +190,7 @@ export default function DashboardPage() {
 
             <div className="hidden md:flex items-center gap-2 border-l border-zinc-800 pl-3">
               <span className="w-2 h-2 rounded-full bg-emerald-500" />
-              <span className="text-xs text-zinc-400 font-medium">KiranaCopilot Engine</span>
+              <span className="text-xs text-zinc-400 font-medium">DukaanDost Engine</span>
             </div>
           </div>
 
@@ -325,9 +325,9 @@ export default function DashboardPage() {
         <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-3 flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px] text-zinc-500 font-medium">
           <div className="flex items-center gap-2">
             <div className="w-4 h-4 rounded bg-emerald-600 flex items-center justify-center text-white font-bold text-[10px]">
-              K
+              D
             </div>
-            <span className="font-semibold text-zinc-300">KiranaCopilot AI</span>
+            <span className="font-semibold text-zinc-300">DukaanDost AI</span>
             <span>· Codex India 2026</span>
           </div>
           <p className="font-mono text-[10px] text-zinc-500">Autonomous Operations Core for Retail MSMEs</p>

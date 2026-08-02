@@ -188,7 +188,7 @@ export async function getBusinessInsightsAndRecommendations() {
     }
 
     // --- Generate Real LLM Narrative operational summary ---
-    let narrativeSummary = 'KiranaCopilot is compiling operational metrics... check back shortly.';
+    let narrativeSummary = 'DukaanDost is compiling operational metrics... check back shortly.';
     try {
       const totalSalesVal = sales.reduce((sum, s) => sum + s.totalAmount, 0);
       const lowStockNames = lowStockProducts.map(p => p.name).join(', ') || 'None';

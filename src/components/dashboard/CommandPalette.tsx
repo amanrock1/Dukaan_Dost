@@ -167,13 +167,13 @@ export function CommandPalette({ onSelectAction, products, invoices }: CommandPa
             )}
           </div>
 
-          <div className="flex items-center justify-between px-4 py-2.5 bg-slate-950/80 border-t border-slate-800 text-[10px] text-slate-500">
+          <div className="flex items-center justify-between px-4 py-2.5 bg-zinc-950 border-t border-zinc-800 text-[10px] text-zinc-500">
             <div className="flex items-center gap-3 font-mono">
               <span>↑↓ navigate</span>
               <span>↵ select</span>
               <span>esc close</span>
             </div>
-            <div className="font-mono font-bold text-emerald-400">KiranaCopilot AI Core</div>
+            <div className="font-mono font-bold text-emerald-400">DukaanDost AI Core</div>
           </div>
         </DialogContent>
       </Dialog>
