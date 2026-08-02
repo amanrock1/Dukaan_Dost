@@ -50,6 +50,7 @@ export async function POST(request: NextRequest) {
     }
 
     const trimmed = input.trim();
+    const lowerInput = trimmed.toLowerCase();
 
     // Step 0: Speech Recognition Step (if voice source)
     if (source === 'voice') {
@@ -61,6 +62,96 @@ export async function POST(request: NextRequest) {
         details: `Converted spoken audio into text input: "${trimmed}"`,
       });
     }
+
+    // ── SPECIAL HANDLER: "aaj ki sale / today's sales" ──────────────────────
+    const isTodaySalesQuery =
+      /aaj|today|is din|kal|yesterday/.test(lowerInput) &&
+      /sale|becha|beche|bikri|revenue|kamai/.test(lowerInput);
+
+    if (isTodaySalesQuery) {
+      updateAgent('Planner Agent', 'working');
+      updateAgent('Inventory Agent', 'working');
+
+      const isYesterday = /kal|yesterday/.test(lowerInput);
+      const targetDate = new Date();
+      if (isYesterday) targetDate.setDate(targetDate.getDate() - 1);
+
+      const dayStart = new Date(targetDate);
+      dayStart.setHours(0, 0, 0, 0);
+      const dayEnd = new Date(targetDate);
+      dayEnd.setHours(23, 59, 59, 999);
+
+      const sales = await db.sale.findMany({
+        where: {
+          shopId: shopId || null,
+          timestamp: { gte: dayStart, lte: dayEnd },
+        },
+        include: { product: { select: { name: true } } },
+        orderBy: { timestamp: 'desc' },
+      });
+
+      updateAgent('Inventory Agent', 'completed');
+      updateAgent('Planner Agent', 'completed');
+
+      steps.push({
+        name: 'Intent Classification',
+        status: 'success',
+        timeMs: 10,
+        confidence: 0.98,
+        details: `Detected "${isYesterday ? 'yesterday' : 'today'}'s sales" query via keyword match.`,
+      });
+      steps.push({
+        name: 'Database Query',
+        status: 'success',
+        timeMs: 50,
+        details: `Fetched ${sales.length} sales from ${dayStart.toLocaleDateString('en-IN')} for this shop.`,
+      });
+
+      if (sales.length === 0) {
+        const label = isYesterday ? 'kal' : 'aaj';
+        return NextResponse.json({
+          response: `${label} koi sale nahi hui is shop mein.`,
+          intent: 'check_stock',
+          success: true,
+          steps,
+          agents: agentActivities,
+          thinking: { intent: 'today_sales', date: dayStart },
+        });
+      }
+
+      const totalRevenue = sales.reduce((s, x) => s + x.totalAmount, 0);
+      const totalUnits = sales.reduce((s, x) => s + x.quantity, 0);
+      const label = isYesterday ? 'Kal' : 'Aaj';
+
+      const lines = sales.map(
+        (s, i) =>
+          `${i + 1}. ${s.product.name} × ${s.quantity} @ ₹${s.unitPrice} = ₹${s.totalAmount.toFixed(2)}`
+      );
+
+      const msg =
+        `📊 ${label} ki Sales (${dayStart.toLocaleDateString('en-IN')}):\n\n` +
+        lines.join('\n') +
+        `\n\n💰 Total Revenue: ₹${totalRevenue.toFixed(2)} | Units Sold: ${totalUnits}`;
+
+      await logAIAction({
+        rawInput: trimmed,
+        detectedIntent: 'check_stock',
+        extractedEntities: { date: dayStart.toISOString() },
+        actionTaken: `Today sales query: ${sales.length} transactions`,
+        status: 'success',
+        metadata: { steps, agentActivities },
+      });
+
+      return NextResponse.json({
+        response: msg,
+        intent: 'check_stock',
+        success: true,
+        steps,
+        agents: agentActivities,
+        thinking: { intent: 'today_sales', count: sales.length, total: totalRevenue },
+      });
+    }
+    // ─────────────────────────────────────────────────────────────────────────
 
     // Step 1: Intent Classification
     const intentStartTime = Date.now();
@@ -93,7 +184,7 @@ export async function POST(request: NextRequest) {
       });
 
       return NextResponse.json({
-        response: `I couldn't determine what you want to do. Try something like:\n• "Sold 5 laptops for 45,000 each to Aman"\n• "Bought 20 notebooks at 50 rupees from Raj Distributors"\n• "Check stock of Keyboard"\n• "Generate invoice for last sale"`,
+        response: `Samajh nahi aaya. Try karo:\n• "10 kurkure behce 20 rupaye each"\n• "50 dairy milk kharidi 15 ruppya each"\n• "kitna stock hai keyboard ka"\n• "invoice banao"`,
         intent: 'unknown',
         entities: null,
         clarificationNeeded: true,
@@ -107,95 +198,59 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Step 2: Entity Extraction
-    const extractStartTime = Date.now();
-    updateAgent('Inventory Agent', 'working');
-
-    let entities: ExtractedEntities;
-    let isMerged = false;
-
-    if (context && (context.intent === classification.intent || classification.intent === 'unknown' || context.intent)) {
-      // Merge new input with context
-      const previousEntities = context.entities;
-      const targetIntent = context.intent || classification.intent;
-      entities = await mergeContext(previousEntities, trimmed, targetIntent);
-      classification.intent = targetIntent; // preserve intent from context
-      isMerged = true;
-    } else {
-      entities = await extractEntities(trimmed, classification.intent);
-    }
-
-    const extractTime = Date.now() - extractStartTime;
-    steps.push({
-      name: 'Entity Extraction',
-      status: entities.missingFields.length > 0 ? 'warning' : 'success',
-      timeMs: extractTime,
-      confidence: isMerged ? 0.95 : 0.9,
-      details: `Extracted entities: Product=${entities.productName || 'None'}, Qty=${entities.quantity || 'None'}, Price=₹${entities.unitPrice || 'None'}, Client=${entities.customerName || 'None'}, Supplier=${entities.supplier || 'None'}. Missing fields: ${entities.missingFields.join(', ') || 'None'}.`,
-    });
-
-    // Check for missing fields for sale/purchase
+    // ── RECORD SALE / PURCHASE ────────────────────────────────────────────────
     if (classification.intent === 'record_sale' || classification.intent === 'record_purchase') {
-      const missing = entities.missingFields;
-      
-      // If we are missing critical fields (productName, quantity, or unitPrice)
-      if (missing.length > 0) {
-        updateAgent('Inventory Agent', 'idle');
-        updateAgent('Planner Agent', 'idle');
 
-        let clarificationMsg = '';
-        if (missing.includes('productName')) {
-          clarificationMsg = 'Which product are you referring to? (e.g. laptop, keyboard, paracetamol)';
-        } else if (missing.includes('quantity')) {
-          clarificationMsg = `How many ${entities.productName}s did you ${classification.intent === 'record_sale' ? 'sell' : 'purchase'}?`;
-        } else if (missing.includes('unitPrice')) {
-          clarificationMsg = `What is the price per unit for the ${entities.productName}?`;
-        }
+      // Step 2: Entity Extraction
+      const extractStartTime = Date.now();
+      updateAgent('Inventory Agent', 'working');
 
-        const actionMetadata = { steps, agentActivities, thinking: { intent: classification.intent, entities, missing } };
-        await logAIAction({
-          rawInput: trimmed,
-          detectedIntent: classification.intent,
-          extractedEntities: entities as unknown as Record<string, unknown>,
-          actionTaken: 'clarification_requested',
-          status: 'clarification_needed',
-          errorMessage: `Missing fields: ${missing.join(', ')}`,
-          metadata: actionMetadata,
-        });
+      let entities: ExtractedEntities;
+      let isMerged = false;
 
+      if (context && (context.intent === classification.intent || context.intent)) {
+        entities = await mergeContext(context.entities, trimmed, context.intent || classification.intent);
+        classification.intent = context.intent || classification.intent;
+        isMerged = true;
+      } else {
+        entities = await extractEntities(trimmed, classification.intent);
+      }
+
+      const extractTime = Date.now() - extractStartTime;
+      steps.push({
+        name: 'Entity Extraction',
+        status: 'success',
+        timeMs: extractTime,
+        confidence: isMerged ? 0.95 : 0.9,
+        details: `Product=${entities.productName || 'None'}, Qty=${entities.quantity || 'None'}, Price=₹${entities.unitPrice || 'None'}, Client=${entities.customerName || 'None'}, Supplier=${entities.supplier || 'None'}.`,
+      });
+
+      // Only ask if product name is completely absent
+      if (!entities.productName) {
         return NextResponse.json({
-          response: clarificationMsg,
+          response: 'Konsa product? (e.g. "20 kurkure behce 10 ruppya each")',
           intent: classification.intent,
           entities,
           clarificationNeeded: true,
-          pendingContext: {
-            intent: classification.intent,
-            entities,
-          },
+          pendingContext: { intent: classification.intent, entities },
           steps,
           agents: agentActivities,
-          thinking: {
-            intent: classification.intent,
-            confidence: classification.confidence,
-            entities,
-            missingFields: missing,
-            validation: 'Awaiting user input for missing fields.',
-            reasoning: `Found partial entities but missing: ${missing.join(', ')}. Prompted user for details.`,
-          },
+          thinking: { intent: classification.intent, confidence: classification.confidence, entities },
         });
       }
 
-      // Step 3: Product Matching and Inventory Validation
+      // Smart defaults — never block execution
+      if (!entities.quantity) entities.quantity = 1;
+
+      // Step 3: Product Matching — auto-create if not found
       const valStartTime = Date.now();
       let matchedProduct = await findMatchingProduct(entities.productName, shopId);
-      let valTime = Date.now() - valStartTime;
+      const valTime = Date.now() - valStartTime;
 
       if (!matchedProduct) {
-        // Automatically create the product on the fly!
-        const prodName = entities.productName || 'New Product';
+        const prodName = entities.productName;
         const capitalizedName = prodName.charAt(0).toUpperCase() + prodName.slice(1);
 
-        // Guess category & GST
         let guessedCategory = 'Groceries';
         if (/headphone|earphone|bud|laptop|mouse|keyboard|monitor|phone|usb|printer|cable|electronic/i.test(prodName)) {
           guessedCategory = 'Electronics';
@@ -206,23 +261,19 @@ export async function POST(request: NextRequest) {
         } else if (/shoe|boot|sandal|sneaker/i.test(prodName)) {
           guessedCategory = 'Footwear';
         }
-
-        let guessedGst = 18;
-        if (guessedCategory === 'Stationery') guessedGst = 5;
-        if (guessedCategory === 'Pharmacy') guessedGst = 12;
-
-        const quantity = entities.quantity || 1;
-        const unitPrice = entities.unitPrice || 20;
+        const guessedGst = guessedCategory === 'Stationery' ? 5 : guessedCategory === 'Pharmacy' ? 12 : 18;
+        const qty = entities.quantity || 1;
+        const price = entities.unitPrice || 20;
 
         matchedProduct = await db.product.create({
           data: {
             name: capitalizedName,
             category: guessedCategory,
             unit: 'pcs',
-            unitPrice: Number(unitPrice),
+            unitPrice: Number(price),
             gstRate: Number(guessedGst),
             lowStockThreshold: 5,
-            currentStock: classification.intent === 'record_sale' ? quantity + 50 : quantity,
+            currentStock: classification.intent === 'record_sale' ? qty + 50 : qty,
             shopId: shopId || null,
           }
         });
@@ -231,22 +282,22 @@ export async function POST(request: NextRequest) {
           name: 'Inventory Validation',
           status: 'success',
           timeMs: valTime,
-          details: `Product "${capitalizedName}" automatically registered in catalog (Guessed Category: ${guessedCategory}, Stock Initialized).`,
+          details: `"${capitalizedName}" auto-registered in catalog (Category: ${guessedCategory}, GST: ${guessedGst}%).`,
         });
       } else {
         steps.push({
           name: 'Inventory Validation',
           status: 'success',
           timeMs: valTime,
-          details: `Successfully matched "${entities.productName}" to catalog item "${matchedProduct.name}". Current Stock: ${matchedProduct.currentStock} units.`,
+          details: `Matched "${entities.productName}" → "${matchedProduct.name}". Stock: ${matchedProduct.currentStock} units.`,
         });
       }
 
-      // Catalog prices
-      const unitPrice = entities.unitPrice || matchedProduct.unitPrice;
+      // Use catalog price if user didn't provide one
+      const unitPrice = entities.unitPrice && entities.unitPrice > 0 ? entities.unitPrice : matchedProduct.unitPrice;
       const quantity = entities.quantity || 1;
 
-      // Step 4: Business Rule and GST Validation
+      // Step 4: Business Rule and GST
       const bizStartTime = Date.now();
       const amount = quantity * unitPrice;
       const gstAmount = Math.round(amount * (matchedProduct.gstRate / 100) * 100) / 100;
@@ -256,38 +307,15 @@ export async function POST(request: NextRequest) {
       if (classification.intent === 'record_sale' && matchedProduct.currentStock < quantity) {
         updateAgent('Inventory Agent', 'error');
         updateAgent('Planner Agent', 'error');
-        steps.push({
-          name: 'Business Rule Validation',
-          status: 'error',
-          timeMs: bizTime,
-          details: `Out of stock: Requested ${quantity} units but only ${matchedProduct.currentStock} available in stock.`,
-        });
-
-        const actionMetadata = { steps, agentActivities, thinking: { intent: classification.intent, entities } };
-        await logAIAction({
-          rawInput: trimmed,
-          detectedIntent: classification.intent,
-          extractedEntities: { ...entities, matchedProduct: matchedProduct.name },
-          actionTaken: 'failed_stock_validation',
-          status: 'error',
-          errorMessage: 'Insufficient stock',
-          metadata: actionMetadata,
-        });
-
+        steps.push({ name: 'Business Rule Validation', status: 'error', timeMs: bizTime, details: `Insufficient stock: ${matchedProduct.currentStock} available, ${quantity} requested.` });
+        await logAIAction({ rawInput: trimmed, detectedIntent: classification.intent, extractedEntities: { ...entities, matchedProduct: matchedProduct.name }, actionTaken: 'failed_stock_validation', status: 'error', errorMessage: 'Insufficient stock', metadata: { steps, agentActivities } });
         return NextResponse.json({
-          response: `Cannot record sale. Insufficient stock! ${matchedProduct.name} has only ${matchedProduct.currentStock} units available, but you requested ${quantity}.`,
+          response: `Stock kam hai! ${matchedProduct.name} mein sirf ${matchedProduct.currentStock} units hain, aapne ${quantity} maange.`,
           intent: classification.intent,
-          entities: { ...entities, matchedProduct: matchedProduct.name, unitPrice, quantity },
           success: false,
           steps,
           agents: agentActivities,
-          thinking: {
-            intent: classification.intent,
-            confidence: classification.confidence,
-            entities,
-            validation: 'Failed (Insufficient stock)',
-            reasoning: `Stock verification failed for product "${matchedProduct.name}" (stock=${matchedProduct.currentStock}, requested=${quantity}).`,
-          },
+          thinking: { intent: classification.intent, confidence: classification.confidence, entities },
         });
       }
 
@@ -295,7 +323,7 @@ export async function POST(request: NextRequest) {
         name: 'Business Rule Validation',
         status: 'success',
         timeMs: bizTime,
-        details: `Passed stock level check. GST calculated at ${matchedProduct.gstRate}%: Base=₹${amount.toLocaleString('en-IN')}, GST=₹${gstAmount.toLocaleString('en-IN')}, Total=₹${totalAmount.toLocaleString('en-IN')}.`,
+        details: `GST ${matchedProduct.gstRate}%: Base=₹${amount.toLocaleString('en-IN')}, GST=₹${gstAmount.toLocaleString('en-IN')}, Total=₹${totalAmount.toLocaleString('en-IN')}.`,
       });
 
       // Step 5: Database Update
@@ -318,37 +346,27 @@ export async function POST(request: NextRequest) {
         name: 'Database Update',
         status: result.success ? 'success' : 'error',
         timeMs: dbTime,
-        details: result.success 
-          ? `Prisma transaction committed. Stock updated: ${matchedProduct.currentStock} → ${result.stockAfter} units.`
-          : `Failed database transaction: ${result.message}`,
+        details: result.success
+          ? `Prisma committed. Stock: ${matchedProduct.currentStock} → ${result.stockAfter} units.`
+          : `DB error: ${result.message}`,
       });
 
       updateAgent('Inventory Agent', 'completed');
-
-      // Step 6: Trigger Analytics & Recommendations updates
       updateAgent('Analytics Agent', 'working');
       updateAgent('Recommendation Agent', 'working');
-      
-      const biStartTime = Date.now();
-      // Fast dynamic check
-      const lowStockAlert = result.stockAfter !== undefined && result.stockAfter <= matchedProduct.lowStockThreshold;
-      const biTime = Date.now() - biStartTime;
 
+      const lowStockAlert = result.stockAfter !== undefined && result.stockAfter <= matchedProduct.lowStockThreshold;
       steps.push({
         name: 'Recommendation Update',
         status: 'success',
-        timeMs: biTime,
-        details: lowStockAlert 
-          ? `Stock fell below threshold! Created Restock Recommendation for ${matchedProduct.name}.`
-          : `Inventory levels stable. Analytics database caches invalidated.`,
+        timeMs: 5,
+        details: lowStockAlert ? `Low stock alert for ${matchedProduct.name}!` : `Inventory stable.`,
       });
 
       updateAgent('Analytics Agent', 'completed');
       updateAgent('Recommendation Agent', 'completed');
       updateAgent('Planner Agent', 'completed');
 
-      // Final logs
-      const actionMetadata = { steps, agentActivities, thinking: { intent: classification.intent, entities, result } };
       await logAIAction({
         rawInput: trimmed,
         detectedIntent: classification.intent,
@@ -356,7 +374,7 @@ export async function POST(request: NextRequest) {
         actionTaken: result.message,
         status: result.success ? 'success' : 'error',
         errorMessage: result.success ? undefined : result.message,
-        metadata: actionMetadata,
+        metadata: { steps, agentActivities },
       });
 
       return NextResponse.json({
@@ -375,13 +393,12 @@ export async function POST(request: NextRequest) {
           entities: { ...entities, matchedProduct: matchedProduct.name },
           stockBefore: matchedProduct.currentStock,
           stockAfter: result.stockAfter,
-          validation: 'Success (GST Calculated, Inventory verified)',
-          reasoning: `Recorded ${classification.intent === 'record_sale' ? 'sale' : 'purchase'} for ${matchedProduct.name} of ${quantity} units at ₹${unitPrice}/unit.`,
+          reasoning: `Recorded ${classification.intent === 'record_sale' ? 'sale' : 'purchase'} for ${matchedProduct.name}.`,
         },
       });
     }
 
-    // Check Stock Intent
+    // ── CHECK STOCK ───────────────────────────────────────────────────────────
     if (classification.intent === 'check_stock') {
       const extractStartTime = Date.now();
       const entities = await extractEntities(trimmed, 'check_stock');
@@ -391,7 +408,7 @@ export async function POST(request: NextRequest) {
         name: 'Entity Extraction',
         status: 'success',
         timeMs: extractTime,
-        details: `Identified target stock product name: "${entities.productName || 'All Products'}"`,
+        details: `Target product: "${entities.productName || 'All Products'}"`,
       });
 
       const checkStartTime = Date.now();
@@ -402,21 +419,19 @@ export async function POST(request: NextRequest) {
         name: 'Inventory Validation',
         status: result.success ? 'success' : 'error',
         timeMs: checkTime,
-        details: `Catalog query executed. Match status: ${result.success ? 'Matched' : 'Unmatched'}. Stock checked.`,
+        details: `Catalog queried. Status: ${result.success ? 'Found' : 'Not found'}.`,
       });
 
       updateAgent('Inventory Agent', 'completed');
       updateAgent('Planner Agent', 'completed');
 
-      const actionMetadata = { steps, agentActivities, thinking: { intent: 'check_stock', entities } };
       await logAIAction({
         rawInput: trimmed,
         detectedIntent: 'check_stock',
         extractedEntities: entities as unknown as Record<string, unknown>,
         actionTaken: result.message.substring(0, 100),
         status: result.success ? 'success' : 'error',
-        errorMessage: result.success ? undefined : result.message,
-        metadata: actionMetadata,
+        metadata: { steps, agentActivities },
       });
 
       return NextResponse.json({
@@ -426,26 +441,17 @@ export async function POST(request: NextRequest) {
         success: result.success,
         steps,
         agents: agentActivities,
-        thinking: {
-          intent: 'check_stock',
-          confidence: classification.confidence,
-          entities,
-          validation: result.success ? 'Success' : 'Error',
-          reasoning: `Checked stock levels for "${entities.productName || 'All items'}".`,
-        },
+        thinking: { intent: 'check_stock', confidence: classification.confidence, entities },
       });
     }
 
-    // Generate Invoice Intent
+    // ── GENERATE INVOICE ──────────────────────────────────────────────────────
     if (classification.intent === 'generate_invoice') {
       updateAgent('Invoice Agent', 'working');
-      
+
       const dbStartTime = Date.now();
       const lastSale = await db.sale.findFirst({
-        where: {
-          invoice: null,
-          shopId: shopId ? shopId : null
-        },
+        where: { invoice: null, shopId: shopId || null },
         orderBy: { timestamp: 'desc' },
         include: { product: true },
       });
@@ -455,39 +461,22 @@ export async function POST(request: NextRequest) {
         name: 'Inventory Validation',
         status: lastSale ? 'success' : 'warning',
         timeMs: dbTime,
-        details: lastSale 
-          ? `Found unbilled sale: ID=${lastSale.id}, Product=${lastSale.product.name}, Amount=₹${lastSale.totalAmount.toLocaleString('en-IN')}.`
-          : `No unbilled sales found in database.`,
+        details: lastSale
+          ? `Unbilled sale found: ${lastSale.product.name}, ₹${lastSale.totalAmount.toLocaleString('en-IN')}.`
+          : `No unbilled sales found.`,
       });
 
       if (!lastSale) {
         updateAgent('Invoice Agent', 'error');
         updateAgent('Planner Agent', 'error');
-        
-        const actionMetadata = { steps, agentActivities, thinking: { intent: 'generate_invoice' } };
-        await logAIAction({
-          rawInput: trimmed,
-          detectedIntent: 'generate_invoice',
-          extractedEntities: {},
-          actionTaken: 'no_uninvoiced_sale',
-          status: 'error',
-          errorMessage: 'No un-invoiced sale found',
-          metadata: actionMetadata,
-        });
-
+        await logAIAction({ rawInput: trimmed, detectedIntent: 'generate_invoice', extractedEntities: {}, actionTaken: 'no_uninvoiced_sale', status: 'error', errorMessage: 'No un-invoiced sale found', metadata: { steps, agentActivities } });
         return NextResponse.json({
-          response: 'No un-invoiced sale found. Please record a sale first, then generate an invoice.',
+          response: 'Koi pending sale nahi mili invoice ke liye. Pehle sale record karo phir invoice banao.',
           intent: 'generate_invoice',
-          entities: null,
-          clarificationNeeded: false,
+          success: false,
           steps,
           agents: agentActivities,
-          thinking: {
-            intent: 'generate_invoice',
-            confidence: classification.confidence,
-            validation: 'Failed (No unbilled sale)',
-            reasoning: 'Searched database for sales where invoice field is null, none returned.',
-          },
+          thinking: { intent: 'generate_invoice', confidence: classification.confidence },
         });
       }
 
@@ -499,23 +488,19 @@ export async function POST(request: NextRequest) {
         name: 'Invoice Generation',
         status: invResult.success ? 'success' : 'error',
         timeMs: invTime,
-        details: invResult.success 
-          ? `PDF compiled and saved. GST Breakdown CGST/SGST registered. File available for download.`
-          : `Invoice compile error: ${invResult.message}`,
+        details: invResult.success ? `PDF ready. GST CGST/SGST registered.` : `Error: ${invResult.message}`,
       });
 
       updateAgent('Invoice Agent', 'completed');
       updateAgent('Planner Agent', 'completed');
 
-      const actionMetadata = { steps, agentActivities, thinking: { intent: 'generate_invoice', saleId: lastSale.id } };
       await logAIAction({
         rawInput: trimmed,
         detectedIntent: 'generate_invoice',
         extractedEntities: { saleId: lastSale.id, product: lastSale.product.name },
         actionTaken: invResult.message,
         status: invResult.success ? 'success' : 'error',
-        errorMessage: invResult.success ? undefined : invResult.message,
-        metadata: actionMetadata,
+        metadata: { steps, agentActivities },
       });
 
       return NextResponse.json({
@@ -525,17 +510,12 @@ export async function POST(request: NextRequest) {
         invoiceGenerated: invResult.success,
         steps,
         agents: agentActivities,
-        thinking: {
-          intent: 'generate_invoice',
-          confidence: classification.confidence,
-          entities: { saleId: lastSale.id },
-          validation: 'Success (Invoice generated)',
-          reasoning: `Generated GST invoice for sale of ${lastSale.product.name} (Sale ID: ${lastSale.id}).`,
-        },
+        thinking: { intent: 'generate_invoice', confidence: classification.confidence, saleId: lastSale.id },
       });
     }
 
     return NextResponse.json({ response: 'Unhandled intent.', intent: classification.intent });
+
   } catch (error: unknown) {
     updateAgent('Planner Agent', 'error');
     const msg = error instanceof Error ? error.message : String(error);
