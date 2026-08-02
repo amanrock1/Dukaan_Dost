@@ -377,14 +377,35 @@ export async function POST(request: NextRequest) {
         metadata: { steps, agentActivities },
       });
 
+      // Auto-generate invoice for every successful sale
+      let autoInvoiceMsg = '';
+      let invoiceGenerated = false;
+      if (classification.intent === 'record_sale' && result.success && result.saleId) {
+        try {
+          const invResult = await generateInvoice(result.saleId);
+          if (invResult.success) {
+            invoiceGenerated = true;
+            autoInvoiceMsg = `\n🧾 GST Invoice auto-generated! Check Invoices tab.`;
+            steps.push({
+              name: 'Invoice Generation',
+              status: 'success',
+              timeMs: 0,
+              details: `GST Invoice auto-generated for ${matchedProduct.name} sale.`,
+            });
+            updateAgent('Invoice Agent', 'completed');
+          }
+        } catch { /* non-blocking */ }
+      }
+
       return NextResponse.json({
-        response: result.message,
+        response: result.message + autoInvoiceMsg,
         intent: classification.intent,
         entities: { ...entities, matchedProduct: matchedProduct.name, unitPrice, quantity },
         success: result.success,
         saleId: result.saleId,
         purchaseId: result.purchaseId,
         lowStockAlert: result.lowStockAlert,
+        invoiceGenerated,
         steps,
         agents: agentActivities,
         thinking: {
@@ -397,6 +418,7 @@ export async function POST(request: NextRequest) {
         },
       });
     }
+
 
     // ── CHECK STOCK ───────────────────────────────────────────────────────────
     if (classification.intent === 'check_stock') {

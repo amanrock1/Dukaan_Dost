@@ -55,22 +55,40 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (BYPASS_LOGIN) {
-      const savedSession = localStorage.getItem('dukaandost_session');
-      if (savedSession) {
-        try {
-          setSession(JSON.parse(savedSession));
-        } catch {
-          // Keep default
-        }
-      }
-      const savedActive = localStorage.getItem('dukaandost_active_shop');
-      if (savedActive) {
-        try {
-          setActiveShop(JSON.parse(savedActive));
-        } catch {
-          // Keep default
-        }
-      }
+      // Always fetch shops from DB so they appear on any device
+      fetch('/api/auth/shops?userId=guest-user')
+        .then(r => r.json())
+        .then(({ shops: dbShops = [] }) => {
+          const defaultShops = [
+            { id: null, name: 'Raj General Store (Guest)' },
+          ];
+          // Merge: DB shops + default guest shop (deduplicate by id)
+          const allShops = [
+            ...defaultShops,
+            ...dbShops.filter((s: any) => s.id !== null),
+          ];
+          const mergedSession = {
+            user: { id: 'guest-user', username: 'guest', name: 'Guest Reviewer' },
+            shops: allShops,
+          };
+          setSession(mergedSession);
+
+          // Restore active shop from localStorage if still valid, else use first
+          const savedActive = localStorage.getItem('dukaandost_active_shop');
+          if (savedActive) {
+            try {
+              const parsed = JSON.parse(savedActive);
+              // Check if this shop still exists in our list
+              const stillValid = allShops.find((s: any) => s.id === parsed.id);
+              if (stillValid) {
+                setActiveShop(parsed);
+                return;
+              }
+            } catch { /* fallthrough */ }
+          }
+          setActiveShop(allShops[0]);
+        })
+        .catch(() => { /* use defaults already set in useState */ });
       return;
     }
 
@@ -87,6 +105,7 @@ export default function DashboardPage() {
       }
     }
   }, []);
+
 
   const handleLoginSuccess = (data: any) => {
     localStorage.setItem('dukaandost_session', JSON.stringify(data));
