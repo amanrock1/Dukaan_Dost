@@ -197,10 +197,15 @@ export default function DashboardPage() {
     });
 
     try {
+      // Clear stale context for invoice/stock queries — they never need prior sale context
+      const lower = inputText.toLowerCase();
+      const isNewIntent = /invoice|bill|receipt|stock|kitne|check/.test(lower);
+      const contextToSend = isNewIntent ? null : pendingContext;
+
       const res = await fetch('/api/process-request', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ input: inputText, source, context: pendingContext, shopId: activeShop?.id }),
+        body: JSON.stringify({ input: inputText, source, context: contextToSend, shopId: activeShop?.id }),
       });
       const data = await res.json();
 
@@ -217,14 +222,15 @@ export default function DashboardPage() {
 
       setLastResponse(data);
 
-      if (data.clarificationNeeded) {
+      if (data.clarificationNeeded && data.pendingContext) {
+        // Only set pending context if it's a product-name question
         setPendingContext(data.pendingContext);
-        toast.warning('Clarification needed for AI execution');
+        toast.warning('Konsa product? Batao phir try karo.');
       } else {
-        setPendingContext(null);
-        if (data.lowStockAlert) toast.warning('Low stock alert! Check inventory tab.');
-        if (data.invoiceGenerated) toast.success('GST Invoice generated! Check Invoices tab.');
-        if (data.saleId || data.purchaseId) toast.success('Transaction recorded successfully.');
+        setPendingContext(null); // always clear
+        if (data.lowStockAlert) toast.warning('⚠️ Low stock! Check Inventory tab.');
+        if (data.invoiceGenerated) toast.success('🧾 GST Invoice generated! Check Invoices tab.');
+        if (data.saleId || data.purchaseId) toast.success('✅ Transaction recorded successfully.');
       }
 
       refreshAll();
