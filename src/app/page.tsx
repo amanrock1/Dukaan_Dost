@@ -19,8 +19,9 @@ import LoginScreen from '@/components/dashboard/LoginScreen';
 import { toast } from 'sonner';
 import {
   Package, ShoppingCart, ArrowDownToLine, FileText, Brain, Sparkles, LineChart,
-  MessageSquare, Cpu, Store, ChevronDown, Plus, LogOut, RotateCcw
+  MessageSquare, Cpu, Store, ChevronDown, Plus, LogOut, RotateCcw, Trash2, RefreshCw
 } from 'lucide-react';
+
 
 export default function DashboardPage() {
   const queryClient = useQueryClient();
@@ -319,7 +320,75 @@ export default function DashboardPage() {
   }
 
 
+  const handleResetShop = async (targetShop?: any) => {
+    const shopToReset = targetShop || activeShop;
+    const name = shopToReset?.name || 'Current Shop';
+    if (!confirm(`Are you sure you want to reset all transaction data (sales, purchases, invoices) for "${name}"? Stock levels will be restored to 10.`)) {
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/auth/reset-shop', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shopId: shopToReset?.id }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(data.message);
+        refreshAll();
+      } else {
+        toast.error(data.error || 'Failed to reset shop.');
+      }
+    } catch (err) {
+      toast.error('Network error resetting shop.');
+    }
+  };
+
+  const handleDeleteShop = async (targetShop: any) => {
+    if (!targetShop) return;
+    const isGuestDefault = !targetShop.id;
+    const name = targetShop.name || 'Workspace';
+
+    const confirmMsg = isGuestDefault
+      ? `Clear all transaction & product data for default guest workspace "${name}"?`
+      : `Are you sure you want to PERMANENTLY DELETE shop "${name}" and all its inventory, sales, & invoices?`;
+
+    if (!confirm(confirmMsg)) return;
+
+    try {
+      const res = await fetch('/api/auth/delete-shop', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shopId: targetShop.id }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(data.message);
+        
+        if (session && targetShop.id) {
+          const updatedShops = session.shops.filter((s: any) => s.id !== targetShop.id);
+          const updatedSession = { ...session, shops: updatedShops };
+          setSession(updatedSession);
+          localStorage.setItem('dukaandost_session', JSON.stringify(updatedSession));
+          
+          if (activeShop?.id === targetShop.id) {
+            const nextActive = updatedShops[0] || { id: null, name: 'Raj General Store (Guest)' };
+            setActiveShop(nextActive);
+            localStorage.setItem('dukaandost_active_shop', JSON.stringify(nextActive));
+          }
+        }
+        refreshAll();
+      } else {
+        toast.error(data.error || 'Failed to delete shop.');
+      }
+    } catch (err) {
+      toast.error('Network error deleting shop.');
+    }
+  };
+
   const handleCreateShop = async () => {
+
     const sName = prompt('Enter the name of your new shop:');
     if (!sName || !sName.trim()) return;
 
@@ -370,28 +439,57 @@ export default function DashboardPage() {
             </div>
 
             {shopDropdownOpen && (
-              <div className="absolute top-11 left-0 w-56 bg-zinc-950 border border-zinc-800 rounded-xl shadow-2xl p-1.5 z-50 space-y-1 font-sans">
-                <div className="px-2 py-1.5 text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
-                  Switch Workspace
+              <div className="absolute top-11 left-0 w-64 bg-zinc-950 border border-zinc-800 rounded-xl shadow-2xl p-1.5 z-50 space-y-1 font-sans">
+                <div className="px-2 py-1.5 text-[10px] font-bold text-zinc-500 uppercase tracking-wider flex justify-between items-center">
+                  <span>Switch Workspace</span>
+                  <span className="text-[9px] text-zinc-600">Reset / Delete</span>
                 </div>
                 {session.shops.map((s: any) => (
-                  <button
-                    key={s.id}
-                    onClick={() => {
-                      setActiveShop(s);
-                      localStorage.setItem('dukaandost_active_shop', JSON.stringify(s));
-                      setShopDropdownOpen(false);
-                      toast.success(`Switched to ${s.name}`);
-                    }}
-                    className={`w-full text-left px-2.5 py-1.5 text-xs rounded-lg transition-colors flex items-center justify-between ${
+                  <div
+                    key={s.id ?? 'guest'}
+                    className={`w-full px-2.5 py-1.5 text-xs rounded-lg transition-colors flex items-center justify-between group ${
                       activeShop?.id === s.id 
                         ? 'bg-emerald-950/40 text-emerald-400 font-semibold' 
                         : 'text-zinc-300 hover:bg-zinc-900 hover:text-white'
                     }`}
                   >
-                    <span>{s.name}</span>
-                    {activeShop?.id === s.id && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />}
-                  </button>
+                    <button
+                      onClick={() => {
+                        setActiveShop(s);
+                        localStorage.setItem('dukaandost_active_shop', JSON.stringify(s));
+                        setShopDropdownOpen(false);
+                        toast.success(`Switched to ${s.name}`);
+                      }}
+                      className="flex-1 text-left flex items-center gap-1.5 truncate cursor-pointer"
+                    >
+                      <span className="truncate">{s.name}</span>
+                      {activeShop?.id === s.id && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />}
+                    </button>
+
+                    <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100 shrink-0">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleResetShop(s);
+                        }}
+                        className="p-1 text-zinc-400 hover:text-amber-400 hover:bg-zinc-800 rounded transition-colors"
+                        title={`Reset transaction data for ${s.name}`}
+                      >
+                        <RefreshCw className="w-3 h-3" />
+                      </button>
+
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteShop(s);
+                        }}
+                        className="p-1 text-zinc-400 hover:text-rose-400 hover:bg-zinc-800 rounded transition-colors"
+                        title={`Delete shop ${s.name}`}
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </div>
                 ))}
                 <div className="border-t border-zinc-900 my-1" />
                 <button
@@ -406,6 +504,7 @@ export default function DashboardPage() {
                 </button>
               </div>
             )}
+
 
             <div className="hidden md:flex items-center gap-2 border-l border-zinc-800 pl-3">
               <span className="w-2 h-2 rounded-full bg-emerald-500" />
