@@ -14,6 +14,8 @@ interface Sale {
   quantity: number;
   unitPrice: number;
   totalPrice?: number;
+  totalAmount?: number;
+  amount?: number;
   gstAmount?: number;
   customerName?: string;
   timestamp: string;
@@ -64,7 +66,9 @@ export function SalesTab({ sales = [], totalAmount = 0, totalCount = 0, onRefres
       if (sortBy === 'date') {
         comparison = new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
       } else if (sortBy === 'amount') {
-        comparison = (a.totalPrice || 0) - (b.totalPrice || 0);
+        const amtA = a.totalAmount ?? a.totalPrice ?? a.amount ?? 0;
+        const amtB = b.totalAmount ?? b.totalPrice ?? b.amount ?? 0;
+        comparison = amtA - amtB;
       } else if (sortBy === 'quantity') {
         comparison = (a.quantity || 0) - (b.quantity || 0);
       }
@@ -219,7 +223,7 @@ export function SalesTab({ sales = [], totalAmount = 0, totalCount = 0, onRefres
                     <TableCell className="font-semibold text-xs text-zinc-100">{s.product?.name || 'Item'}</TableCell>
                     <TableCell className="text-xs text-zinc-400 font-medium">{s.customerName || 'Walk-in Customer'}</TableCell>
                     <TableCell className="text-xs text-right font-mono font-semibold text-zinc-200">{s.quantity || 0}</TableCell>
-                    <TableCell className="text-xs text-right font-mono font-semibold text-emerald-400">₹{(s.totalPrice || 0).toLocaleString('en-IN')}</TableCell>
+                    <TableCell className="text-xs text-right font-mono font-semibold text-emerald-400">₹{(s.totalAmount ?? s.totalPrice ?? s.amount ?? 0).toLocaleString('en-IN')}</TableCell>
                     <TableCell className="text-xs text-right font-mono text-zinc-400">₹{(s.gstAmount || 0).toLocaleString('en-IN')}</TableCell>
                     <TableCell className="text-xs text-center font-mono text-zinc-400">
                       {s.timestamp ? new Date(s.timestamp).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' }) : 'Just now'}

@@ -246,7 +246,7 @@ async function executeSingleCommand(
           unitPrice: Number(price),
           gstRate: Number(guessedGst),
           lowStockThreshold: 5,
-          currentStock: classification.intent === 'record_sale' ? qty + 50 : qty,
+          currentStock: classification.intent === 'record_sale' ? qty + 50 : 0,
           shopId: shopId || null,
         }
       });

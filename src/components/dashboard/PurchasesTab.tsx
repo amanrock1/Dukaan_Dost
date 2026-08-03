@@ -12,6 +12,8 @@ interface Purchase {
   quantity: number;
   unitPrice: number;
   totalPrice?: number;
+  totalAmount?: number;
+  amount?: number;
   supplier?: string;
   timestamp: string;
   product?: {
@@ -52,7 +54,9 @@ export function PurchasesTab({ purchases = [], totalAmount = 0, totalCount = 0 }
       if (sortBy === 'date') {
         comparison = new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
       } else if (sortBy === 'amount') {
-        comparison = (a.totalPrice || 0) - (b.totalPrice || 0);
+        const amtA = a.amount ?? a.totalAmount ?? a.totalPrice ?? 0;
+        const amtB = b.amount ?? b.totalAmount ?? b.totalPrice ?? 0;
+        comparison = amtA - amtB;
       } else if (sortBy === 'quantity') {
         comparison = (a.quantity || 0) - (b.quantity || 0);
       }
@@ -177,7 +181,7 @@ export function PurchasesTab({ purchases = [], totalAmount = 0, totalCount = 0 }
                     <TableCell className="font-semibold text-xs text-zinc-100">{p.product?.name || 'Item'}</TableCell>
                     <TableCell className="text-xs text-zinc-400 font-medium">{p.supplier || 'General Wholesaler'}</TableCell>
                     <TableCell className="text-xs text-right font-mono font-semibold text-zinc-200">+{p.quantity || 0}</TableCell>
-                    <TableCell className="text-xs text-right font-mono font-semibold text-indigo-400">₹{(p.totalPrice || 0).toLocaleString('en-IN')}</TableCell>
+                    <TableCell className="text-xs text-right font-mono font-semibold text-indigo-400">₹{(p.amount ?? p.totalAmount ?? p.totalPrice ?? 0).toLocaleString('en-IN')}</TableCell>
                     <TableCell className="text-xs text-center font-mono text-zinc-400">
                       {p.timestamp ? new Date(p.timestamp).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' }) : 'Recently'}
                     </TableCell>
