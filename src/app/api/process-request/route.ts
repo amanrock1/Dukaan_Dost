@@ -472,11 +472,25 @@ export async function POST(request: NextRequest) {
       updateAgent('Invoice Agent', 'working');
 
       const dbStartTime = Date.now();
-      const lastSale = await db.sale.findFirst({
+
+      // Try un-invoiced sale first; fallback to most recent sale (re-use existing invoice)
+      let lastSale = await db.sale.findFirst({
         where: { invoice: null, shopId: shopId || null },
         orderBy: { timestamp: 'desc' },
-        include: { product: true },
+        include: { product: true, invoice: true },
       });
+
+      let alreadyHasInvoice = false;
+      if (!lastSale) {
+        // No un-invoiced sale — fetch most recent sale regardless
+        lastSale = await db.sale.findFirst({
+          where: { shopId: shopId || null },
+          orderBy: { timestamp: 'desc' },
+          include: { product: true, invoice: true },
+        });
+        alreadyHasInvoice = !!(lastSale?.invoice);
+      }
+
       const dbTime = Date.now() - dbStartTime;
 
       steps.push({
@@ -484,16 +498,16 @@ export async function POST(request: NextRequest) {
         status: lastSale ? 'success' : 'warning',
         timeMs: dbTime,
         details: lastSale
-          ? `Unbilled sale found: ${lastSale.product.name}, ₹${lastSale.totalAmount.toLocaleString('en-IN')}.`
-          : `No unbilled sales found.`,
+          ? `Sale found: ${lastSale.product.name}, ₹${lastSale.totalAmount.toLocaleString('en-IN')}.${alreadyHasInvoice ? ' (existing invoice)' : ''}`
+          : `No sales found.`,
       });
 
       if (!lastSale) {
         updateAgent('Invoice Agent', 'error');
         updateAgent('Planner Agent', 'error');
-        await logAIAction({ rawInput: trimmed, detectedIntent: 'generate_invoice', extractedEntities: {}, actionTaken: 'no_uninvoiced_sale', status: 'error', errorMessage: 'No un-invoiced sale found', metadata: { steps, agentActivities } });
+        await logAIAction({ rawInput: trimmed, detectedIntent: 'generate_invoice', extractedEntities: {}, actionTaken: 'no_sale_found', status: 'error', errorMessage: 'No sale found', metadata: { steps, agentActivities } });
         return NextResponse.json({
-          response: 'Koi pending sale nahi mili invoice ke liye. Pehle sale record karo phir invoice banao.',
+          response: 'Koi sale nahi mili. Pehle kuch becho, phir invoice banega! 🛒',
           intent: 'generate_invoice',
           success: false,
           steps,
@@ -501,6 +515,22 @@ export async function POST(request: NextRequest) {
           thinking: { intent: 'generate_invoice', confidence: classification.confidence },
         });
       }
+
+      // If invoice already exists for this sale, return it directly
+      if (alreadyHasInvoice && lastSale.invoice) {
+        updateAgent('Invoice Agent', 'completed');
+        updateAgent('Planner Agent', 'completed');
+        return NextResponse.json({
+          response: `✅ Invoice already exists for last sale: ${lastSale.product.name} — ${lastSale.invoice.invoiceNumber}. Check GST Invoices tab!`,
+          intent: 'generate_invoice',
+          success: true,
+          invoiceGenerated: true,
+          steps,
+          agents: agentActivities,
+          thinking: { intent: 'generate_invoice', confidence: classification.confidence, saleId: lastSale.id },
+        });
+      }
+
 
       const invStartTime = Date.now();
       const invResult = await generateInvoice(lastSale.id);

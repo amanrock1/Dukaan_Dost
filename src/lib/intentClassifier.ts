@@ -27,25 +27,32 @@ Input: "invoice banao" -> {"intent":"generate_invoice","confidence":0.9,"reasoni
 
 export async function classifyIntent(userInput: string): Promise<ClassificationResult> {
   const lower = userInput.toLowerCase();
-  
-  // High-priority hybrid keyword pre-classification to prevent LLM typo issues
-  const saleKeywords = ['\\bsold\\b', '\\bbecha\\b', '\\bbehca\\b', '\\bbeche\\b', '\\bbech\\b', '\\bsale\\b', '\\bsell\\b'];
-  const purchaseKeywords = ['\\bbought\\b', '\\bpurchased\\b', '\\bpurchase\\b', '\\bkhareeda\\b', '\\bkharida\\b', '\\bkharid\\b', '\\bkhareede\\b', '\\bliya\\b', '\\blaaya\\b', '\\blaya\\b'];
-  const invoiceKeywords = ['\\binvoice\\b', '\\bbill\\b', '\\breceipt\\b'];
-  const stockKeywords = ['\\bstock\\b', '\\bkitne\\b', '\\bbaaki\\b', '\\bremaining\\b'];
 
-  if (saleKeywords.some(pattern => new RegExp(pattern, 'i').test(lower))) {
-    return { intent: 'record_sale', confidence: 0.95, reasoning: 'Hybrid: Sale keyword detected in user input' };
+  // ── INVOICE CHECK FIRST — must come before sale keywords ──────────────────
+  // "generate invoice for last sale" contains "sale" but is NOT a record_sale
+  const invoiceKeywords = ['\\binvoice\\b', '\\bbill\\b', '\\breceipt\\b', '\\binvoice banao\\b', '\\bbill banao\\b'];
+  if (invoiceKeywords.some(pattern => new RegExp(pattern, 'i').test(lower))) {
+    return { intent: 'generate_invoice', confidence: 0.98, reasoning: 'Hybrid: Invoice keyword detected — highest priority' };
   }
+
+  // ── PURCHASE CHECK ────────────────────────────────────────────────────────
+  const purchaseKeywords = ['\\bbought\\b', '\\bpurchased\\b', '\\bpurchase\\b', '\\bkhareeda\\b', '\\bkharida\\b', '\\bkharid\\b', '\\bkhareede\\b', '\\bliya\\b', '\\blaaya\\b', '\\blaya\\b'];
   if (purchaseKeywords.some(pattern => new RegExp(pattern, 'i').test(lower))) {
     return { intent: 'record_purchase', confidence: 0.95, reasoning: 'Hybrid: Purchase keyword detected in user input' };
   }
-  if (invoiceKeywords.some(pattern => new RegExp(pattern, 'i').test(lower))) {
-    return { intent: 'generate_invoice', confidence: 0.95, reasoning: 'Hybrid: Invoice keyword detected in user input' };
+
+  // ── SALE CHECK — NOTE: '\bsale\b' removed to avoid conflict with "last sale" in invoice queries ──
+  const saleKeywords = ['\\bsold\\b', '\\bbecha\\b', '\\bbehca\\b', '\\bbeche\\b', '\\bbech\\b', '\\bsell\\b', '\\bbika\\b', '\\bbike\\b'];
+  if (saleKeywords.some(pattern => new RegExp(pattern, 'i').test(lower))) {
+    return { intent: 'record_sale', confidence: 0.95, reasoning: 'Hybrid: Sale keyword detected in user input' };
   }
+
+  // ── STOCK CHECK ───────────────────────────────────────────────────────────
+  const stockKeywords = ['\\bstock\\b', '\\bkitne\\b', '\\bbaaki\\b', '\\bremaining\\b'];
   if (stockKeywords.some(pattern => new RegExp(pattern, 'i').test(lower))) {
     return { intent: 'check_stock', confidence: 0.95, reasoning: 'Hybrid: Stock check keyword detected in user input' };
   }
+
 
   try {
     const response = await llmChat({
