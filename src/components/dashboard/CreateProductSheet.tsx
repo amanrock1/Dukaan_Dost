@@ -41,6 +41,9 @@ export function CreateProductSheet({
   const [gstRate, setGstRate] = useState(18);
   const [lowStockThreshold, setLowStockThreshold] = useState(10);
   const [initialStock, setInitialStock] = useState(0);
+  const [modelNumber, setModelNumber] = useState('');
+  const [aliases, setAliases] = useState('');
+  const [attributes, setAttributes] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
@@ -56,6 +59,9 @@ export function CreateProductSheet({
       setGstRate(18);
       setInitialStock(10);
       setLowStockThreshold(5);
+      setModelNumber('');
+      setAliases('');
+      setAttributes('');
     }
   }, [suggestedData, isOpen]);
 
@@ -87,6 +93,9 @@ export function CreateProductSheet({
             gstRate: Number(gstRate),
             lowStockThreshold: Number(lowStockThreshold),
             currentStock: Number(initialStock),
+            modelNumber,
+            aliases,
+            attributes,
           },
           execution: pendingExecution,
           shopId,
@@ -151,8 +160,41 @@ export function CreateProductSheet({
               <Input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
+                placeholder="e.g. Philips 50W LED Flood Light Warm White"
                 className="bg-slate-950 border-slate-800 text-white font-bold h-9 text-xs rounded-xl focus:border-emerald-500"
                 required
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-slate-400 font-semibold mb-1 block text-[11px]">Model Code / MPN (Optional)</label>
+                <Input
+                  value={modelNumber}
+                  onChange={(e) => setModelNumber(e.target.value)}
+                  placeholder="e.g. BVP173 or UK9"
+                  className="bg-slate-950 border-slate-800 text-white font-mono h-9 text-xs rounded-xl"
+                />
+              </div>
+
+              <div>
+                <label className="text-slate-400 font-semibold mb-1 block text-[11px]">Shortcodes &amp; Aliases</label>
+                <Input
+                  value={aliases}
+                  onChange={(e) => setAliases(e.target.value)}
+                  placeholder="e.g. bvp173, p50 flood"
+                  className="bg-slate-950 border-slate-800 text-white h-9 text-xs rounded-xl"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="text-slate-400 font-semibold mb-1 block text-[11px]">Variant Specifications / Attributes</label>
+              <Input
+                value={attributes}
+                onChange={(e) => setAttributes(e.target.value)}
+                placeholder="e.g. 50W Warm White, 3000K or Size 9, White"
+                className="bg-slate-950 border-slate-800 text-white h-9 text-xs rounded-xl"
               />
             </div>
 

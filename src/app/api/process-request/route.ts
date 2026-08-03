@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { classifyIntent, splitMultiActionCommand } from '@/lib/intentClassifier';
-import { extractEntities, findMatchingProduct, mergeContext, ExtractedEntities } from '@/lib/entityExtractor';
+import { extractEntities, findMatchingProduct, findMatchingProductsDetailed, mergeContext, ExtractedEntities } from '@/lib/entityExtractor';
 import { recordSale, recordPurchase, checkStock } from '@/lib/inventoryEngine';
 import { generateInvoice } from '@/lib/invoiceGenerator';
 import { logAIAction } from '@/lib/aiLogger';
@@ -30,6 +30,8 @@ interface SingleResult {
   lowStockAlert?: boolean;
   invoiceGenerated?: boolean;
   clarificationNeeded?: boolean;
+  disambiguationNeeded?: boolean;
+  candidateProducts?: any[];
   pendingContext?: unknown;
   thinking?: Record<string, unknown>;
 }
@@ -217,8 +219,23 @@ async function executeSingleCommand(
     if (!entities.quantity) entities.quantity = 1;
 
     const valStartTime = Date.now();
-    let matchedProduct = await findMatchingProduct(entities.productName, shopId);
+    const matchDetail = await findMatchingProductsDetailed(entities.productName, shopId);
+    let matchedProduct = matchDetail.matchedProduct;
     const valTime = Date.now() - valStartTime;
+
+    if (!matchedProduct && matchDetail.candidates && matchDetail.candidates.length > 1) {
+      return {
+        response: `Multiple products match "${entities.productName}". Select the exact item:`,
+        intent: classification.intent,
+        entities,
+        success: false,
+        clarificationNeeded: true,
+        disambiguationNeeded: true,
+        candidateProducts: matchDetail.candidates,
+        pendingContext: { intent: classification.intent, entities },
+        thinking: { intent: classification.intent, confidence: classification.confidence, entities, candidates: matchDetail.candidates },
+      };
+    }
 
     if (!matchedProduct) {
       const prodName = entities.productName;

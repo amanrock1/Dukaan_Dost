@@ -415,6 +415,11 @@ export default function DashboardPage() {
     }
   };
 
+  const handleSelectCandidate = useCallback((candidateName: string) => {
+    setInput(candidateName);
+    handleSubmit(candidateName, 'text');
+  }, [handleSubmit]);
+
   return (
     <div className="min-h-screen flex flex-col bg-[#09090b] text-zinc-100 font-[family-name:var(--font-plus-jakarta)] selection:bg-emerald-500/30 selection:text-emerald-300">
       
@@ -593,7 +598,7 @@ export default function DashboardPage() {
           </div>
 
           {/* Right: Execution Graph & Reasoning */}
-          <ResponsePanel lastResponse={lastResponse} isLoading={isLoading} onUndo={handleUndo} />
+          <ResponsePanel lastResponse={lastResponse} isLoading={isLoading} onUndo={handleUndo} onSelectCandidate={handleSelectCandidate} />
         </div>
 
         {/* ── Autonomous Insights & Actions ── */}

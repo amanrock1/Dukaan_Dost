@@ -32,6 +32,9 @@ export async function POST(request: NextRequest) {
         currentStock: Number(productData.currentStock) || 20,
         lowStockThreshold: Number(productData.lowStockThreshold) || 5,
         unit: productData.unit || 'pcs',
+        modelNumber: productData.modelNumber || null,
+        aliases: productData.aliases || null,
+        attributes: productData.attributes || null,
         shopId: shopId || null,
       },
     });

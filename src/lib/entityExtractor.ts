@@ -195,8 +195,16 @@ export function fallbackExtract(input: string): ExtractedEntities {
   };
 }
 
-export async function findMatchingProduct(productName: string | null, shopId?: string | null): Promise<{ id: string; name: string; unitPrice: number; gstRate: number; currentStock: number; lowStockThreshold: number } | null> {
-  if (!productName || !productName.trim()) return null;
+export interface ProductMatchResult {
+  matchedProduct: { id: string; name: string; unitPrice: number; gstRate: number; currentStock: number; lowStockThreshold: number; modelNumber?: string | null; aliases?: string | null; attributes?: string | null } | null;
+  candidates?: Array<{ id: string; name: string; unitPrice: number; currentStock: number; modelNumber?: string | null; attributes?: string | null }>;
+}
+
+export async function findMatchingProductsDetailed(
+  productName: string | null,
+  shopId?: string | null
+): Promise<ProductMatchResult> {
+  if (!productName || !productName.trim()) return { matchedProduct: null };
   const resolvedShopId = shopId && shopId.trim() !== '' ? shopId : null;
 
   const cleanInput = productName
@@ -209,17 +217,40 @@ export async function findMatchingProduct(productName: string | null, shopId?: s
     where: resolvedShopId ? { shopId: resolvedShopId } : { shopId: null }
   });
 
-  if (products.length === 0) return null;
+  if (products.length === 0) return { matchedProduct: null };
 
-  // 1. Exact match (case-insensitive) or singular/plural match
+  // ── 1. MODEL NUMBER EXACT/PARTIAL MATCH (Highest Priority: 100% precision) ──
+  const inputWords = cleanInput.split(/\s+/).filter(w => w.length > 0);
+
+  for (const p of products) {
+    if (p.modelNumber && p.modelNumber.trim()) {
+      const modelLower = p.modelNumber.trim().toLowerCase();
+      // If input equals model number or any word in input equals model number
+      if (cleanInput === modelLower || inputWords.includes(modelLower)) {
+        return { matchedProduct: p };
+      }
+    }
+  }
+
+  // ── 2. ALIAS / SHORTCODE MATCH ──────────────────────────────────────────
+  for (const p of products) {
+    if (p.aliases && p.aliases.trim()) {
+      const aliasList = p.aliases.toLowerCase().split(',').map(a => a.trim()).filter(Boolean);
+      if (aliasList.some(alias => cleanInput === alias || cleanInput.includes(alias) || alias.includes(cleanInput))) {
+        return { matchedProduct: p };
+      }
+    }
+  }
+
+  // ── 3. EXACT NAME MATCH ──────────────────────────────────────────────────
   const cleanSingular = cleanInput.replace(/s$/, '');
   const exact = products.find(p => {
-    const pName = p.name.trim().toLowerCase();
-    return pName === cleanInput || pName.replace(/s$/, '') === cleanSingular;
+    const pName = `${p.name} ${p.attributes || ''}`.trim().toLowerCase();
+    return pName === cleanInput || pName.replace(/s$/, '') === cleanSingular || p.name.trim().toLowerCase() === cleanInput;
   });
-  if (exact) return { id: exact.id, name: exact.name, unitPrice: exact.unitPrice, gstRate: exact.gstRate, currentStock: exact.currentStock, lowStockThreshold: exact.lowStockThreshold };
+  if (exact) return { matchedProduct: exact };
 
-  // Generic category words that shouldn't be the sole reason for matching different products
+  // ── 4. BRAND, ATTRIBUTES & FUZZY MATCHING ────────────────────────────────
   const genericWords = new Set([
     'laptop', 'laptops', 'phone', 'phones', 'mobile', 'mobiles', 'keyboard', 'keyboards', 
     'mouse', 'mice', 'monitor', 'monitors', 'headphone', 'headphones', 'earphone', 'earphones',
@@ -228,46 +259,63 @@ export async function findMatchingProduct(productName: string | null, shopId?: s
     'piece', 'pieces', 'pcs', 'item', 'items', 'product', 'products', 'unit', 'units'
   ]);
 
-  // Extract significant (non-generic) words from input
-  const inputWords = cleanInput.split(/\s+/).filter(w => w.length > 1);
   const significantInputWords = inputWords.filter(w => !genericWords.has(w));
 
-  // 2. Substring & Brand Matching
-  for (const p of products) {
-    const candidateLower = p.name.trim().toLowerCase();
-    const candidateWords = candidateLower.split(/\s+/).filter(w => w.length > 1);
-    const significantCandidateWords = candidateWords.filter(w => !genericWords.has(w));
+  const candidateList: typeof products = [];
 
-    // Check if input is substring of candidate or candidate is substring of input
+  for (const p of products) {
+    const candidateLower = `${p.name} ${p.attributes || ''}`.trim().toLowerCase();
+
     if (candidateLower.includes(cleanInput) || cleanInput.includes(candidateLower)) {
-      // Ensure all significant input words exist in candidate
       const hasConflict = significantInputWords.some(w => !candidateLower.includes(w));
       if (!hasConflict) {
-        return { id: p.id, name: p.name, unitPrice: p.unitPrice, gstRate: p.gstRate, currentStock: p.currentStock, lowStockThreshold: p.lowStockThreshold };
+        candidateList.push(p);
       }
-    }
-
-    // Check if ALL significant words in input match candidate
-    if (significantInputWords.length > 0) {
+    } else if (significantInputWords.length > 0) {
       const allSignificantMatch = significantInputWords.every(w => candidateLower.includes(w));
-      const noCandidateConflict = significantCandidateWords.every(w => cleanInput.includes(w));
-      if (allSignificantMatch && noCandidateConflict) {
-        return { id: p.id, name: p.name, unitPrice: p.unitPrice, gstRate: p.gstRate, currentStock: p.currentStock, lowStockThreshold: p.lowStockThreshold };
+      if (allSignificantMatch) {
+        candidateList.push(p);
       }
     }
   }
 
-  // 3. Fallback for queries containing ONLY generic category words (e.g. "check stock of laptop")
+  if (candidateList.length === 1) {
+    return { matchedProduct: candidateList[0] };
+  }
+
+  if (candidateList.length > 1) {
+    return {
+      matchedProduct: null,
+      candidates: candidateList.slice(0, 4).map(p => ({
+        id: p.id,
+        name: p.name,
+        unitPrice: p.unitPrice,
+        currentStock: p.currentStock,
+        modelNumber: p.modelNumber,
+        attributes: p.attributes,
+      })),
+    };
+  }
+
+  // ── 5. FALLBACK GENERIC MATCH ─────────────────────────────────────────────
   if (significantInputWords.length === 0) {
     const match = products.find(p => {
       const pLower = p.name.toLowerCase();
       return inputWords.some(w => pLower.includes(w));
     });
     if (match) {
-      return { id: match.id, name: match.name, unitPrice: match.unitPrice, gstRate: match.gstRate, currentStock: match.currentStock, lowStockThreshold: match.lowStockThreshold };
+      return { matchedProduct: match };
     }
   }
 
-  return null;
+  return { matchedProduct: null };
+}
+
+export async function findMatchingProduct(
+  productName: string | null,
+  shopId?: string | null
+): Promise<{ id: string; name: string; unitPrice: number; gstRate: number; currentStock: number; lowStockThreshold: number; modelNumber?: string | null; aliases?: string | null; attributes?: string | null } | null> {
+  const result = await findMatchingProductsDetailed(productName, shopId);
+  return result.matchedProduct;
 }
 

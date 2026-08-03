@@ -17,6 +17,9 @@ interface Product {
   lowStockThreshold: number;
   unitPrice: number;
   gstRate: number;
+  modelNumber?: string | null;
+  aliases?: string | null;
+  attributes?: string | null;
 }
 
 interface InventoryTabProps {
@@ -317,7 +320,21 @@ export function InventoryTab({ products, lowStockCount, onRefresh, onOpenAddProd
                 const runout = getDaysUntilStockout(p);
                 return (
                   <TableRow key={p.id} className="hover:bg-zinc-800/40 border-b border-zinc-800/60 transition-colors">
-                    <TableCell className="font-semibold text-xs text-zinc-100 whitespace-nowrap">{p.name}</TableCell>
+                    <TableCell className="font-semibold text-xs text-zinc-100 whitespace-nowrap">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span>{p.name}</span>
+                        {p.modelNumber && (
+                          <span className="text-[10px] font-mono font-bold text-emerald-400 bg-emerald-950/80 border border-emerald-800/80 px-1.5 py-0.5 rounded">
+                            #{p.modelNumber}
+                          </span>
+                        )}
+                        {p.attributes && (
+                          <span className="text-[10px] text-zinc-400 font-sans italic">
+                            ({p.attributes})
+                          </span>
+                        )}
+                      </div>
+                    </TableCell>
                     <TableCell className="text-xs text-zinc-400 font-medium whitespace-nowrap">{p.category}</TableCell>
                     <TableCell className="text-xs text-right font-mono font-semibold text-zinc-200 whitespace-nowrap">₹{p.unitPrice.toLocaleString('en-IN')}</TableCell>
                     <TableCell className={`text-xs text-right font-mono font-semibold whitespace-nowrap ${isLow ? 'text-rose-400' : 'text-emerald-400'}`}>

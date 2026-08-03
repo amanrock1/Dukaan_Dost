@@ -6,7 +6,7 @@ import { logAIAction } from '@/lib/aiLogger';
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { name, category, unit, unitPrice, gstRate, currentStock, lowStockThreshold, shopId } = body;
+    const { name, category, unit, unitPrice, gstRate, currentStock, lowStockThreshold, modelNumber, aliases, attributes, shopId } = body;
 
     if (!name || !name.trim()) {
       return NextResponse.json({ error: 'Product name is required' }, { status: 400 });
@@ -23,6 +23,9 @@ export async function POST(request: Request) {
         gstRate: Number(gstRate) || 18,
         currentStock: Number(currentStock) || 0,
         lowStockThreshold: Number(lowStockThreshold) || 5,
+        modelNumber: modelNumber || null,
+        aliases: aliases || null,
+        attributes: attributes || null,
         shopId: normShopId,
       },
     });
@@ -46,7 +49,7 @@ export async function POST(request: Request) {
 export async function PUT(request: Request) {
   try {
     const body = await request.json();
-    const { id, name, category, unit, unitPrice, gstRate, currentStock, lowStockThreshold } = body;
+    const { id, name, category, unit, unitPrice, gstRate, currentStock, lowStockThreshold, modelNumber, aliases, attributes } = body;
 
     if (!id) {
       return NextResponse.json({ error: 'Product ID is required' }, { status: 400 });
@@ -62,6 +65,9 @@ export async function PUT(request: Request) {
         ...(gstRate !== undefined && { gstRate: Number(gstRate) }),
         ...(currentStock !== undefined && { currentStock: Number(currentStock) }),
         ...(lowStockThreshold !== undefined && { lowStockThreshold: Number(lowStockThreshold) }),
+        ...(modelNumber !== undefined && { modelNumber: modelNumber || null }),
+        ...(aliases !== undefined && { aliases: aliases || null }),
+        ...(attributes !== undefined && { attributes: attributes || null }),
       },
     });
 

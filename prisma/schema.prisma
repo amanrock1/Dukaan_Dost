@@ -41,6 +41,9 @@ model Product {
   lowStockThreshold  Int      @default(5) @map("low_stock_threshold")
   unitPrice          Float    @default(0) @map("unit_price")
   gstRate            Float    @default(18.0) @map("gst_rate")
+  modelNumber        String?  @map("model_number")
+  aliases            String?
+  attributes         String?
   createdAt          DateTime @default(now()) @map("created_at")
   updatedAt          DateTime @updatedAt @map("updated_at")
   

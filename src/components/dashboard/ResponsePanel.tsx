@@ -27,6 +27,8 @@ interface ResponsePanelProps {
     intent: string;
     entities?: any;
     clarificationNeeded?: boolean;
+    disambiguationNeeded?: boolean;
+    candidateProducts?: Array<{ id: string; name: string; unitPrice: number; currentStock: number; modelNumber?: string | null; attributes?: string | null }>;
     steps?: ExecutionStep[];
     agents?: AgentState[];
     thinking?: {
@@ -43,9 +45,10 @@ interface ResponsePanelProps {
   } | null;
   isLoading: boolean;
   onUndo?: () => void;
+  onSelectCandidate?: (productName: string) => void;
 }
 
-export function ResponsePanel({ lastResponse, isLoading, onUndo }: ResponsePanelProps) {
+export function ResponsePanel({ lastResponse, isLoading, onUndo, onSelectCandidate }: ResponsePanelProps) {
   const [activeTab, setActiveTab] = useState<'timeline' | 'thinking' | 'agents'>('timeline');
   const [expandedStep, setExpandedStep] = useState<string | null>(null);
 
@@ -324,6 +327,28 @@ export function ResponsePanel({ lastResponse, isLoading, onUndo }: ResponsePanel
             <p className="text-xs font-semibold text-zinc-200 mt-0.5 leading-snug">
               {lastResponse?.response || 'Awaiting inventory instructions. Enter a command above to begin.'}
             </p>
+
+            {lastResponse?.disambiguationNeeded && lastResponse.candidateProducts && lastResponse.candidateProducts.length > 0 && (
+              <div className="mt-2.5 space-y-1.5">
+                <p className="text-[10px] font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1">
+                  <span>⚡ Tap to select exact variant:</span>
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {lastResponse.candidateProducts.map((p) => (
+                    <button
+                      key={p.id}
+                      onClick={() => onSelectCandidate && onSelectCandidate(p.name)}
+                      className="text-xs font-semibold bg-emerald-950/90 hover:bg-emerald-900 border border-emerald-700/90 text-emerald-200 px-3 py-1.5 rounded-xl transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <span>{p.name}</span>
+                      {p.modelNumber && <span className="text-[10px] font-mono text-emerald-400 bg-emerald-900/80 px-1.5 py-0.2 rounded">#{p.modelNumber}</span>}
+                      {p.attributes && <span className="text-[10px] text-zinc-300 italic">({p.attributes})</span>}
+                      <span className="text-[10px] font-mono text-emerald-400 font-bold ml-1">₹{p.unitPrice}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
         {onUndo && (
