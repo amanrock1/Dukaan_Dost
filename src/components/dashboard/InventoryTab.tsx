@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Search, AlertTriangle, ArrowUpDown, Check } from 'lucide-react';
+import { Search, AlertTriangle, ArrowUpDown, Check, Edit2, Trash2, Plus, X, Save } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
@@ -23,15 +23,27 @@ interface InventoryTabProps {
   products: Product[];
   lowStockCount: number;
   onRefresh?: () => void;
+  onOpenAddProduct?: () => void;
 }
 
-export function InventoryTab({ products, lowStockCount, onRefresh }: InventoryTabProps) {
+export function InventoryTab({ products, lowStockCount, onRefresh, onOpenAddProduct }: InventoryTabProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [stockFilter, setStockFilter] = useState<'All' | 'Low' | 'OK'>('All');
   const [sortBy, setSortBy] = useState<'name' | 'stock' | 'price'>('name');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
-  
+
+  // Quick edit state
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editCategory, setEditCategory] = useState('Electronics');
+  const [editUnit, setEditUnit] = useState('pcs');
+  const [editStock, setEditStock] = useState(0);
+  const [editPrice, setEditPrice] = useState(0);
+  const [editGst, setEditGst] = useState(18);
+  const [editThreshold, setEditThreshold] = useState(5);
+  const [isSaving, setIsSaving] = useState(false);
+
   const [isUpdatingThreshold, setIsUpdatingThreshold] = useState<string | null>(null);
   const [thresholdInput, setThresholdInput] = useState<string>('');
   const [isRestocking, setIsRestocking] = useState<string | null>(null);
@@ -84,6 +96,73 @@ export function InventoryTab({ products, lowStockCount, onRefresh }: InventoryTa
     }
   };
 
+  const handleStartEdit = (p: Product) => {
+    setEditingProduct(p);
+    setEditName(p.name);
+    setEditCategory(p.category);
+    setEditUnit(p.unit);
+    setEditStock(p.currentStock);
+    setEditPrice(p.unitPrice);
+    setEditGst(p.gstRate);
+    setEditThreshold(p.lowStockThreshold);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingProduct) return;
+    if (!editName.trim()) {
+      toast.error('Product name cannot be empty');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const res = await fetch('/api/inventory/product', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: editingProduct.id,
+          name: editName,
+          category: editCategory,
+          unit: editUnit,
+          currentStock: editStock,
+          unitPrice: editPrice,
+          gstRate: editGst,
+          lowStockThreshold: editThreshold,
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        toast.success(`Updated "${editName}" successfully!`);
+        setEditingProduct(null);
+        if (onRefresh) onRefresh();
+      } else {
+        toast.error(data.error || 'Failed to update product');
+      }
+    } catch (err) {
+      toast.error('Network error updating product');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDeleteProduct = async (p: Product) => {
+    if (!confirm(`Are you sure you want to delete "${p.name}"?`)) return;
+
+    try {
+      const res = await fetch(`/api/inventory/product?id=${p.id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        toast.success(`Deleted product "${p.name}"`);
+        if (onRefresh) onRefresh();
+      } else {
+        toast.error(data.error || 'Failed to delete product');
+      }
+    } catch (err) {
+      toast.error('Network error deleting product');
+    }
+  };
+
   const handleQuickPurchase = async (productId: string, productName: string) => {
     const qtyStr = prompt(`How many units of ${productName} would you like to purchase for restock?`, '20');
     if (!qtyStr) return;
@@ -108,7 +187,6 @@ export function InventoryTab({ products, lowStockCount, onRefresh }: InventoryTa
         toast.error(data.error || 'Failed to restock product.');
       }
     } catch (err) {
-      console.error(err);
       toast.error('Network error during restock.');
     } finally {
       setIsRestocking(null);
@@ -131,27 +209,40 @@ export function InventoryTab({ products, lowStockCount, onRefresh }: InventoryTa
         toast.error(data.error || 'Failed to update threshold.');
       }
     } catch (err) {
-      console.error(err);
       toast.error('Network error during threshold update.');
     }
   };
 
   return (
-    <div className="saas-card p-5 space-y-4">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+    <div className="saas-card p-4 sm:p-5 space-y-4">
+      {/* Header Bar */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h3 className="text-sm font-bold text-white tracking-tight">Operational Inventory Catalog</h3>
-          <p className="text-xs text-zinc-400 mt-0.5">Real-time stock quantities, thresholds, and replenishment predictions</p>
+          <p className="text-xs text-zinc-400 mt-0.5">Real-time stock quantities, manual editing, thresholds &amp; predictions</p>
         </div>
-        {lowStockCount > 0 && (
-          <Badge className="bg-rose-950 text-rose-300 border border-rose-800 uppercase text-[10px] font-bold gap-1.5 shrink-0 px-2.5 py-1 self-start md:self-center">
-            <AlertTriangle className="w-3.5 h-3.5" /> {lowStockCount} items low stock
-          </Badge>
-        )}
+        
+        <div className="flex items-center gap-2">
+          {onOpenAddProduct && (
+            <Button
+              onClick={onOpenAddProduct}
+              size="sm"
+              className="h-8 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg gap-1.5 shadow-md"
+            >
+              <Plus className="w-3.5 h-3.5" /> + Add Product
+            </Button>
+          )}
+
+          {lowStockCount > 0 && (
+            <Badge className="bg-rose-950 text-rose-300 border border-rose-800 uppercase text-[10px] font-bold gap-1.5 shrink-0 px-2.5 py-1">
+              <AlertTriangle className="w-3.5 h-3.5" /> {lowStockCount} items low stock
+            </Badge>
+          )}
+        </div>
       </div>
 
       {/* Filter controls */}
-      <div className="flex flex-col sm:flex-row items-center gap-3">
+      <div className="flex flex-col sm:flex-row items-center gap-2.5">
         <div className="relative w-full sm:flex-1">
           <Search className="absolute left-3 top-2.5 w-4 h-4 text-zinc-500" />
           <Input
@@ -188,7 +279,7 @@ export function InventoryTab({ products, lowStockCount, onRefresh }: InventoryTa
       </div>
 
       {/* Table */}
-      <div className="max-h-[420px] overflow-y-auto border border-zinc-800/80 rounded-xl">
+      <div className="max-h-[420px] overflow-y-auto border border-zinc-800/80 rounded-xl overflow-x-auto">
         <Table>
           <TableHeader className="bg-zinc-950 sticky top-0 z-10 border-b border-zinc-800">
             <TableRow className="hover:bg-transparent border-zinc-800">
@@ -208,9 +299,9 @@ export function InventoryTab({ products, lowStockCount, onRefresh }: InventoryTa
                   Current Stock <ArrowUpDown className="w-3 h-3 text-zinc-500" />
                 </div>
               </TableHead>
-              <TableHead className="text-xs font-semibold text-zinc-300 text-center">Alert Threshold</TableHead>
-              <TableHead className="text-xs font-semibold text-zinc-300 text-center">Runout Forecast</TableHead>
-              <TableHead className="text-xs font-semibold text-zinc-300 text-center">Quick Actions</TableHead>
+              <TableHead className="text-xs font-semibold text-zinc-300 text-center">Threshold</TableHead>
+              <TableHead className="text-xs font-semibold text-zinc-300 text-center">Runout</TableHead>
+              <TableHead className="text-xs font-semibold text-zinc-300 text-center">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -226,14 +317,14 @@ export function InventoryTab({ products, lowStockCount, onRefresh }: InventoryTa
                 const runout = getDaysUntilStockout(p);
                 return (
                   <TableRow key={p.id} className="hover:bg-zinc-800/40 border-b border-zinc-800/60 transition-colors">
-                    <TableCell className="font-semibold text-xs text-zinc-100">{p.name}</TableCell>
-                    <TableCell className="text-xs text-zinc-400 font-medium">{p.category}</TableCell>
-                    <TableCell className="text-xs text-right font-mono font-semibold text-zinc-200">₹{p.unitPrice.toLocaleString('en-IN')}</TableCell>
-                    <TableCell className={`text-xs text-right font-mono font-semibold ${isLow ? 'text-rose-400' : 'text-emerald-400'}`}>
+                    <TableCell className="font-semibold text-xs text-zinc-100 whitespace-nowrap">{p.name}</TableCell>
+                    <TableCell className="text-xs text-zinc-400 font-medium whitespace-nowrap">{p.category}</TableCell>
+                    <TableCell className="text-xs text-right font-mono font-semibold text-zinc-200 whitespace-nowrap">₹{p.unitPrice.toLocaleString('en-IN')}</TableCell>
+                    <TableCell className={`text-xs text-right font-mono font-semibold whitespace-nowrap ${isLow ? 'text-rose-400' : 'text-emerald-400'}`}>
                       {p.currentStock} {p.unit}
                     </TableCell>
                     
-                    <TableCell className="text-center">
+                    <TableCell className="text-center whitespace-nowrap">
                       {isUpdatingThreshold === p.id ? (
                         <div className="flex items-center justify-center gap-1">
                           <input
@@ -264,29 +355,52 @@ export function InventoryTab({ products, lowStockCount, onRefresh }: InventoryTa
                           className="font-mono text-xs cursor-pointer text-zinc-400 hover:text-zinc-100 border-b border-dashed border-zinc-700 font-medium hover:border-zinc-400 transition-colors"
                           title="Click to edit threshold"
                         >
-                          {p.lowStockThreshold} units
+                          {p.lowStockThreshold} {p.unit}
                         </span>
                       )}
                     </TableCell>
 
-                    <TableCell className="text-xs text-center font-medium text-zinc-400">
+                    <TableCell className="text-xs text-center font-medium text-zinc-400 whitespace-nowrap">
                       {isLow ? (
-                        <span className="text-rose-400 font-semibold bg-rose-950/80 px-2 py-0.5 rounded border border-rose-800/80">Replenish Immediately</span>
+                        <span className="text-rose-400 font-semibold bg-rose-950/80 px-2 py-0.5 rounded border border-rose-800/80">Low Stock</span>
                       ) : (
                         runout
                       )}
                     </TableCell>
 
-                    <TableCell className="text-center">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-7 text-[11px] font-semibold bg-zinc-900 border-zinc-800 text-zinc-200 hover:bg-zinc-800 hover:text-white transition-all"
-                        disabled={isRestocking === p.id}
-                        onClick={() => handleQuickPurchase(p.id, p.name)}
-                      >
-                        {isRestocking === p.id ? 'Restocking...' : 'Restock'}
-                      </Button>
+                    <TableCell className="text-center whitespace-nowrap">
+                      <div className="flex items-center justify-center gap-1">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 text-[11px] font-semibold bg-zinc-900 border-zinc-800 text-zinc-200 hover:bg-zinc-800 hover:text-white px-2"
+                          disabled={isRestocking === p.id}
+                          onClick={() => handleQuickPurchase(p.id, p.name)}
+                          title="Quick Restock"
+                        >
+                          {isRestocking === p.id ? '...' : 'Restock'}
+                        </Button>
+                        
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-zinc-400 hover:text-emerald-400 hover:bg-zinc-800"
+                          onClick={() => handleStartEdit(p)}
+                          title="Manual Edit Product"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </Button>
+
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-zinc-400 hover:text-rose-400 hover:bg-zinc-800"
+                          onClick={() => handleDeleteProduct(p)}
+                          title="Delete Product"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 );
@@ -295,6 +409,130 @@ export function InventoryTab({ products, lowStockCount, onRefresh }: InventoryTa
           </TableBody>
         </Table>
       </div>
+
+      {/* Manual Product Edit Modal */}
+      {editingProduct && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/80 backdrop-blur-sm p-4">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 max-w-md w-full space-y-4 shadow-2xl relative text-zinc-100">
+            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+              <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                <Edit2 className="w-4 h-4 text-emerald-400" /> Manual Edit Product SKU
+              </h4>
+              <button
+                onClick={() => setEditingProduct(null)}
+                className="text-zinc-400 hover:text-white p-1 rounded-lg hover:bg-zinc-800"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="text-zinc-400 font-semibold mb-1 block">Product Name</label>
+                <Input
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  className="bg-zinc-950 border-zinc-800 text-white font-bold h-9 text-xs rounded-xl"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-zinc-400 font-semibold mb-1 block">Category</label>
+                  <select
+                    value={editCategory}
+                    onChange={(e) => setEditCategory(e.target.value)}
+                    className="w-full h-9 bg-zinc-950 border border-zinc-800 text-zinc-200 text-xs rounded-xl px-2.5 outline-none font-medium"
+                  >
+                    <option value="Electronics">Electronics</option>
+                    <option value="Stationery">Stationery</option>
+                    <option value="Footwear">Footwear</option>
+                    <option value="Pharmacy">Pharmacy</option>
+                    <option value="Groceries">Groceries</option>
+                    <option value="General">General</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-zinc-400 font-semibold mb-1 block">Unit</label>
+                  <Input
+                    value={editUnit}
+                    onChange={(e) => setEditUnit(e.target.value)}
+                    className="bg-zinc-950 border-zinc-800 text-white h-9 text-xs rounded-xl"
+                    placeholder="pcs, kg, box"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-zinc-400 font-semibold mb-1 block">Base Price (₹)</label>
+                  <Input
+                    type="number"
+                    value={editPrice}
+                    onChange={(e) => setEditPrice(Number(e.target.value))}
+                    className="bg-zinc-950 border-zinc-800 text-white font-mono font-bold h-9 text-xs rounded-xl"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-zinc-400 font-semibold mb-1 block">GST Rate (%)</label>
+                  <select
+                    value={editGst}
+                    onChange={(e) => setEditGst(Number(e.target.value))}
+                    className="w-full h-9 bg-zinc-950 border border-zinc-800 text-zinc-200 text-xs rounded-xl px-2.5 outline-none font-mono"
+                  >
+                    <option value={0}>0% (Exempt)</option>
+                    <option value={5}>5%</option>
+                    <option value={12}>12%</option>
+                    <option value={18}>18% (Standard)</option>
+                    <option value={28}>28%</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-zinc-400 font-semibold mb-1 block">Current Stock</label>
+                  <Input
+                    type="number"
+                    value={editStock}
+                    onChange={(e) => setEditStock(Number(e.target.value))}
+                    className="bg-zinc-950 border-zinc-800 text-white font-mono font-bold h-9 text-xs rounded-xl"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-zinc-400 font-semibold mb-1 block">Low Stock Alert Level</label>
+                  <Input
+                    type="number"
+                    value={editThreshold}
+                    onChange={(e) => setEditThreshold(Number(e.target.value))}
+                    className="bg-zinc-950 border-zinc-800 text-white font-mono h-9 text-xs rounded-xl"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-2 flex gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setEditingProduct(null)}
+                className="flex-1 bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-white h-9 rounded-xl font-bold"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSaveEdit}
+                disabled={isSaving}
+                className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white h-9 rounded-xl font-bold gap-1.5 shadow-md"
+              >
+                <Save className="w-4 h-4" /> Save Changes
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

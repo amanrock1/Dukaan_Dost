@@ -566,7 +566,37 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // ── UNDO / REVERT ACTION ──────────────────────────────────────────────────
+    if (classification.intent === 'undo') {
+      updateAgent('Inventory Agent', 'working');
+      const undoRes = await fetch(new URL('/api/undo', request.url).toString(), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shopId }),
+      });
+      const undoData = await undoRes.json();
+      updateAgent('Inventory Agent', 'completed');
+      updateAgent('Planner Agent', 'completed');
+
+      steps.push({
+        name: 'Database Update',
+        status: undoData.success ? 'success' : 'error',
+        timeMs: 20,
+        details: undoData.message || 'Undo executed',
+      });
+
+      return NextResponse.json({
+        response: undoData.message || 'Undo executed',
+        intent: 'undo',
+        success: undoData.success,
+        steps,
+        agents: agentActivities,
+        thinking: { intent: 'undo', confidence: classification.confidence },
+      });
+    }
+
     return NextResponse.json({ response: 'Unhandled intent.', intent: classification.intent });
+
 
   } catch (error: unknown) {
     updateAgent('Planner Agent', 'error');

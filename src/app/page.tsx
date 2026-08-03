@@ -253,6 +253,36 @@ export default function DashboardPage() {
     handleSubmit(actionText, 'text');
   }, [handleSubmit]);
 
+  const handleUndo = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const res = await fetch('/api/undo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shopId: activeShop?.id }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(data.message);
+        setLastResponse({
+          response: data.message,
+          intent: 'undo',
+          success: true,
+          steps: [
+            { name: 'Undo Command Execution', status: 'success', timeMs: 15, details: data.message },
+          ],
+        });
+        refreshAll();
+      } else {
+        toast.error(data.message || data.error || 'Nothing to undo.');
+      }
+    } catch (err) {
+      toast.error('Network error during undo.');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [activeShop, refreshAll]);
+
   const handleSelectCommand = useCallback((cmdVal: string) => {
     setInput(cmdVal);
   }, []);
@@ -281,11 +311,13 @@ export default function DashboardPage() {
     { label: '⌘2 Bought 20 Notebooks', value: 'bought 20 notebooks at 50 rupees from Raj supplier' },
     { label: '⌘3 Check Keyboard Stock', value: 'check stock of keyboards' },
     { label: '⌘4 Generate Invoice', value: 'generate invoice for last sale' },
+    { label: '⌘5 Undo Action ↩️', value: 'undo' },
   ];
 
   if (!session) {
     return <LoginScreen onSuccess={handleLoginSuccess} />;
   }
+
 
   const handleCreateShop = async () => {
     const sName = prompt('Enter the name of your new shop:');
@@ -462,7 +494,7 @@ export default function DashboardPage() {
           </div>
 
           {/* Right: Execution Graph & Reasoning */}
-          <ResponsePanel lastResponse={lastResponse} isLoading={isLoading} />
+          <ResponsePanel lastResponse={lastResponse} isLoading={isLoading} onUndo={handleUndo} />
         </div>
 
         {/* ── Autonomous Insights & Actions ── */}
@@ -475,34 +507,43 @@ export default function DashboardPage() {
 
         {/* ── Data Workspace Tabs ── */}
         <Tabs defaultValue="inventory" className="w-full space-y-3">
-          <TabsList className="bg-[#121215] border border-zinc-800/80 w-full justify-start rounded-xl h-auto p-1 gap-1 shadow-md">
-            {[
-              { value: 'inventory', icon: Package, label: 'Inventory Catalog', count: products.length },
-              { value: 'sales', icon: ShoppingCart, label: 'Sales Transactions', count: sales.length },
-              { value: 'purchases', icon: ArrowDownToLine, label: 'Procurement', count: purchases.length },
-              { value: 'invoices', icon: FileText, label: 'GST Invoices', count: invoices.length },
-              { value: 'insights', icon: LineChart, label: 'Business Intelligence' },
-              { value: 'ai-log', icon: Cpu, label: 'Audit Logs', count: logs.length },
-            ].map(({ value, icon: Icon, label, count }) => (
-              <TabsTrigger
-                key={value}
-                value={value}
-                className="gap-2 text-xs font-semibold data-[state=active]:bg-zinc-800 data-[state=active]:text-white text-zinc-400 hover:text-zinc-200 cursor-pointer rounded-lg px-3 py-1.5 transition-all"
-              >
-                <Icon className="w-3.5 h-3.5 text-zinc-400" />
-                <span className="hidden sm:inline">{label}</span>
-                <span className="sm:hidden">{label.split(' ')[0]}</span>
-                {count !== undefined && (
-                  <span className="text-[10px] bg-zinc-900 border border-zinc-700/60 text-zinc-400 font-mono px-1.5 py-0.2 rounded-full">
-                    {count}
-                  </span>
-                )}
-              </TabsTrigger>
-            ))}
-          </TabsList>
+          <div className="w-full overflow-x-auto pb-1 no-scrollbar">
+            <TabsList className="bg-[#121215] border border-zinc-800/80 min-w-max w-full justify-start rounded-xl h-auto p-1 gap-1 shadow-md flex-nowrap sm:flex-wrap">
+              {[
+                { value: 'inventory', icon: Package, label: 'Inventory Catalog', count: products.length },
+                { value: 'sales', icon: ShoppingCart, label: 'Sales Transactions', count: sales.length },
+                { value: 'purchases', icon: ArrowDownToLine, label: 'Procurement', count: purchases.length },
+                { value: 'invoices', icon: FileText, label: 'GST Invoices', count: invoices.length },
+                { value: 'insights', icon: LineChart, label: 'Business Intelligence' },
+                { value: 'ai-log', icon: Cpu, label: 'Audit Logs', count: logs.length },
+              ].map(({ value, icon: Icon, label, count }) => (
+                <TabsTrigger
+                  key={value}
+                  value={value}
+                  className="gap-2 text-xs font-semibold data-[state=active]:bg-zinc-800 data-[state=active]:text-white text-zinc-400 hover:text-zinc-200 cursor-pointer rounded-lg px-3 py-1.5 transition-all whitespace-nowrap"
+                >
+                  <Icon className="w-3.5 h-3.5 text-zinc-400" />
+                  <span>{label}</span>
+                  {count !== undefined && (
+                    <span className="text-[10px] bg-zinc-900 border border-zinc-700/60 text-zinc-400 font-mono px-1.5 py-0.2 rounded-full">
+                      {count}
+                    </span>
+                  )}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </div>
 
           <TabsContent value="inventory" className="mt-0">
-            <InventoryTab products={products} lowStockCount={lowStockCount} onRefresh={refreshAll} />
+            <InventoryTab
+              products={products}
+              lowStockCount={lowStockCount}
+              onRefresh={refreshAll}
+              onOpenAddProduct={() => {
+                setSuggestedProductData(null);
+                setIsProductSheetOpen(true);
+              }}
+            />
           </TabsContent>
           <TabsContent value="sales" className="mt-0">
             <SalesTab sales={sales} totalAmount={todayRevenue} totalCount={totalSalesCount} onRefresh={refreshAll} />

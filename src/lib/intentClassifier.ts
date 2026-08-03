@@ -1,6 +1,6 @@
 import { llmChat } from './ai-sdk';
 
-export type Intent = 'record_sale' | 'record_purchase' | 'check_stock' | 'generate_invoice' | 'unknown';
+export type Intent = 'record_sale' | 'record_purchase' | 'check_stock' | 'generate_invoice' | 'undo' | 'unknown';
 
 interface ClassificationResult {
   intent: Intent;
@@ -15,25 +15,26 @@ Classify the input into EXACTLY ONE of these intents:
 - record_purchase: User wants to record that items were PURCHASED/BOUGHT (e.g., "bought 10 notebooks", "purchase 5 headphones", "khareeda 20 pens", "khareed liya 15 item")
 - check_stock: User wants to CHECK current stock levels (e.g., "how many laptops", "stock of keyboard", "kitne monitors hai", "stock check karo")
 - generate_invoice: User wants to GENERATE an invoice for a sale (e.g., "generate invoice", "bill banao", "invoice for last sale", "invoice banao")
+- undo: User wants to UNDO, REVERT, or CANCEL the last command/transaction (e.g., "undo", "reverse", "wapas karo", "revert last sale", "galat ho gaya")
 
 Respond in JSON format only:
-{"intent": "<intent_name>", "confidence": <0.0-1.0>, "reasoning": "<brief explanation>"}
-
-Examples:
-Input: "5 laptops sold for 40000 each" -> {"intent":"record_sale","confidence":0.95,"reasoning":"User reports selling 5 laptops"}
-Input: "bought 10 keyboards at 1500" -> {"intent":"record_purchase","confidence":0.95,"reasoning":"User reports buying keyboards"}
-Input: "kitne monitors stock mein hain" -> {"intent":"check_stock","confidence":0.9,"reasoning":"User asking about monitor stock in Hindi"}
-Input: "invoice banao" -> {"intent":"generate_invoice","confidence":0.9,"reasoning":"User wants to generate an invoice"}`;
+{"intent": "<intent_name>", "confidence": <0.0-1.0>, "reasoning": "<brief explanation>"}`;
 
 export async function classifyIntent(userInput: string): Promise<ClassificationResult> {
   const lower = userInput.toLowerCase();
 
-  // ── INVOICE CHECK FIRST — must come before sale keywords ──────────────────
-  // "generate invoice for last sale" contains "sale" but is NOT a record_sale
+  // ── UNDO CHECK FIRST ──────────────────────────────────────────────────────
+  const undoKeywords = ['\\bundo\\b', '\\breverse\\b', '\\bwapas\\b', '\\brevert\\b', '\\bcancel last\\b', '\\bgalat\\b'];
+  if (undoKeywords.some(pattern => new RegExp(pattern, 'i').test(lower))) {
+    return { intent: 'undo', confidence: 0.99, reasoning: 'Hybrid: Undo / Revert keyword detected — highest priority' };
+  }
+
+  // ── INVOICE CHECK ─────────────────────────────────────────────────────────
   const invoiceKeywords = ['\\binvoice\\b', '\\bbill\\b', '\\breceipt\\b', '\\binvoice banao\\b', '\\bbill banao\\b'];
   if (invoiceKeywords.some(pattern => new RegExp(pattern, 'i').test(lower))) {
-    return { intent: 'generate_invoice', confidence: 0.98, reasoning: 'Hybrid: Invoice keyword detected — highest priority' };
+    return { intent: 'generate_invoice', confidence: 0.98, reasoning: 'Hybrid: Invoice keyword detected' };
   }
+
 
   // ── PURCHASE CHECK ────────────────────────────────────────────────────────
   const purchaseKeywords = ['\\bbought\\b', '\\bpurchased\\b', '\\bpurchase\\b', '\\bkhareeda\\b', '\\bkharida\\b', '\\bkharid\\b', '\\bkhareede\\b', '\\bliya\\b', '\\blaaya\\b', '\\blaya\\b'];

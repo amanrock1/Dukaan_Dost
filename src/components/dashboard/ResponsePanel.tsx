@@ -42,11 +42,13 @@ interface ResponsePanelProps {
     success?: boolean;
   } | null;
   isLoading: boolean;
+  onUndo?: () => void;
 }
 
-export function ResponsePanel({ lastResponse, isLoading }: ResponsePanelProps) {
+export function ResponsePanel({ lastResponse, isLoading, onUndo }: ResponsePanelProps) {
   const [activeTab, setActiveTab] = useState<'timeline' | 'thinking' | 'agents'>('timeline');
   const [expandedStep, setExpandedStep] = useState<string | null>(null);
+
 
   const getStepIcon = (status: string) => {
     switch (status) {
@@ -314,15 +316,27 @@ export function ResponsePanel({ lastResponse, isLoading }: ResponsePanelProps) {
       </div>
 
       {/* Execution Output Footer */}
-      <div className="p-3 bg-zinc-950 border-t border-zinc-800 flex items-start gap-2.5">
-        <CheckCircle2 className={`w-4 h-4 shrink-0 mt-0.5 ${lastResponse?.success === false ? 'text-rose-400' : 'text-emerald-400'}`} />
-        <div className="flex-1 min-w-0">
-          <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Execution Output Summary</p>
-          <p className="text-xs font-semibold text-zinc-200 mt-0.5 leading-snug">
-            {lastResponse?.response || 'Awaiting inventory instructions. Enter a command above to begin.'}
-          </p>
+      <div className="p-3 bg-zinc-950 border-t border-zinc-800 flex items-center justify-between gap-2.5">
+        <div className="flex items-start gap-2.5 flex-1 min-w-0">
+          <CheckCircle2 className={`w-4 h-4 shrink-0 mt-0.5 ${lastResponse?.success === false ? 'text-rose-400' : 'text-emerald-400'}`} />
+          <div className="flex-1 min-w-0">
+            <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Execution Output Summary</p>
+            <p className="text-xs font-semibold text-zinc-200 mt-0.5 leading-snug">
+              {lastResponse?.response || 'Awaiting inventory instructions. Enter a command above to begin.'}
+            </p>
+          </div>
         </div>
+        {onUndo && (
+          <button
+            onClick={onUndo}
+            className="shrink-0 flex items-center gap-1 text-[11px] font-bold bg-amber-950/60 hover:bg-amber-900/80 border border-amber-800/80 text-amber-300 px-2.5 py-1 rounded-lg transition-colors cursor-pointer"
+            title="Reverse the last action"
+          >
+            Undo Action ↩️
+          </button>
+        )}
       </div>
     </div>
   );
 }
+
