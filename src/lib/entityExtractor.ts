@@ -177,40 +177,70 @@ function fallbackExtract(input: string): ExtractedEntities {
 }
 
 export async function findMatchingProduct(productName: string | null, shopId?: string | null): Promise<{ id: string; name: string; unitPrice: number; gstRate: number; currentStock: number; lowStockThreshold: number } | null> {
-  if (!productName) return null;
-  // Normalize empty string to null (guest shop stores data with shopId: null)
+  if (!productName || !productName.trim()) return null;
   const resolvedShopId = shopId && shopId.trim() !== '' ? shopId : null;
 
   const products = await db.product.findMany({
     where: resolvedShopId ? { shopId: resolvedShopId } : { shopId: null }
   });
-  
-  // Exact match first
-  const exact = products.find(p => p.name.toLowerCase() === productName.toLowerCase());
+
+  if (products.length === 0) return null;
+
+  const cleanInput = productName.trim().toLowerCase();
+
+  // 1. Exact match (case-insensitive)
+  const exact = products.find(p => p.name.trim().toLowerCase() === cleanInput);
   if (exact) return { id: exact.id, name: exact.name, unitPrice: exact.unitPrice, gstRate: exact.gstRate, currentStock: exact.currentStock, lowStockThreshold: exact.lowStockThreshold };
 
-  // Partial match
-  const partial = products.find(p => 
-    p.name.toLowerCase().includes(productName.toLowerCase()) || 
-    productName.toLowerCase().includes(p.name.toLowerCase())
-  );
-  if (partial) return { id: partial.id, name: partial.name, unitPrice: partial.unitPrice, gstRate: partial.gstRate, currentStock: partial.currentStock, lowStockThreshold: partial.lowStockThreshold };
+  // Generic category words that shouldn't be the sole reason for matching different products
+  const genericWords = new Set([
+    'laptop', 'laptops', 'phone', 'phones', 'mobile', 'mobiles', 'keyboard', 'keyboards', 
+    'mouse', 'mice', 'monitor', 'monitors', 'headphone', 'headphones', 'earphone', 'earphones',
+    'notebook', 'notebooks', 'pen', 'pens', 'pencil', 'pencils', 'shoe', 'shoes', 'boot', 'boots',
+    'tablet', 'tablets', 'medicine', 'medicines', 'light', 'lights', 'bulb', 'bulbs', 'packet', 'packets',
+    'piece', 'pieces', 'pcs', 'item', 'items', 'product', 'products', 'unit', 'units'
+  ]);
 
-  // Word overlap match
-  const inputWords = productName.toLowerCase().split(/\s+/);
-  let bestMatch: typeof products[0] | null = null;
-  let bestScore = 0;
+  // Extract significant (non-generic) words from input
+  const inputWords = cleanInput.split(/\s+/).filter(w => w.length > 1);
+  const significantInputWords = inputWords.filter(w => !genericWords.has(w));
+
+  // 2. Substring & Brand Matching
   for (const p of products) {
-    const nameWords = p.name.toLowerCase().split(/\s+/);
-    const score = inputWords.filter(w => nameWords.some(nw => nw.includes(w) || w.includes(nw))).length;
-    if (score > bestScore) {
-      bestScore = score;
-      bestMatch = p;
+    const candidateLower = p.name.trim().toLowerCase();
+    const candidateWords = candidateLower.split(/\s+/).filter(w => w.length > 1);
+    const significantCandidateWords = candidateWords.filter(w => !genericWords.has(w));
+
+    // Check if input is substring of candidate or candidate is substring of input
+    if (candidateLower.includes(cleanInput) || cleanInput.includes(candidateLower)) {
+      // Ensure all significant input words exist in candidate
+      const hasConflict = significantInputWords.some(w => !candidateLower.includes(w));
+      if (!hasConflict) {
+        return { id: p.id, name: p.name, unitPrice: p.unitPrice, gstRate: p.gstRate, currentStock: p.currentStock, lowStockThreshold: p.lowStockThreshold };
+      }
+    }
+
+    // Check if ALL significant words in input match candidate
+    if (significantInputWords.length > 0) {
+      const allSignificantMatch = significantInputWords.every(w => candidateLower.includes(w));
+      const noCandidateConflict = significantCandidateWords.every(w => cleanInput.includes(w));
+      if (allSignificantMatch && noCandidateConflict) {
+        return { id: p.id, name: p.name, unitPrice: p.unitPrice, gstRate: p.gstRate, currentStock: p.currentStock, lowStockThreshold: p.lowStockThreshold };
+      }
     }
   }
-  if (bestMatch && bestScore > 0) {
-    return { id: bestMatch.id, name: bestMatch.name, unitPrice: bestMatch.unitPrice, gstRate: bestMatch.gstRate, currentStock: bestMatch.currentStock, lowStockThreshold: bestMatch.lowStockThreshold };
+
+  // 3. Fallback for queries containing ONLY generic category words (e.g. "check stock of laptop")
+  if (significantInputWords.length === 0) {
+    const match = products.find(p => {
+      const pLower = p.name.toLowerCase();
+      return inputWords.some(w => pLower.includes(w));
+    });
+    if (match) {
+      return { id: match.id, name: match.name, unitPrice: match.unitPrice, gstRate: match.gstRate, currentStock: match.currentStock, lowStockThreshold: match.lowStockThreshold };
+    }
   }
 
   return null;
 }
+
