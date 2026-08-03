@@ -11,15 +11,40 @@ interface Invoice {
   id: string;
   invoiceNumber: string;
   customerName: string;
+  productName?: string;
+  quantity?: number;
+  unitPrice?: number;
   subtotal?: number;
   gstAmount?: number;
   totalAmount?: number;
-  pdfUrl?: string;
+  gstRate?: number;
+  pdfData?: string;
   timestamp: string;
 }
 
 interface InvoicesTabProps {
   invoices?: Invoice[];
+}
+
+function openPdfFromBase64(base64: string, filename: string, download = false) {
+  try {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    const blob = new Blob([bytes], { type: 'application/pdf' });
+    const url = URL.createObjectURL(blob);
+    if (download) {
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+    } else {
+      window.open(url, '_blank');
+    }
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+  } catch {
+    alert('PDF not available. Please try again.');
+  }
 }
 
 export function InvoicesTab({ invoices = [] }: InvoicesTabProps) {
@@ -46,7 +71,6 @@ export function InvoicesTab({ invoices = [] }: InvoicesTabProps) {
           </Badge>
         </div>
 
-        {/* Search */}
         <div className="relative">
           <Search className="absolute left-3 top-2.5 w-4 h-4 text-zinc-500" />
           <Input
@@ -57,7 +81,6 @@ export function InvoicesTab({ invoices = [] }: InvoicesTabProps) {
           />
         </div>
 
-        {/* Table */}
         <div className="max-h-[380px] overflow-y-auto border border-zinc-800/80 rounded-xl">
           <Table>
             <TableHeader className="bg-zinc-950 sticky top-0 z-10 border-b border-zinc-800">
@@ -74,7 +97,7 @@ export function InvoicesTab({ invoices = [] }: InvoicesTabProps) {
               {filteredInvoices.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={6} className="h-32 text-center text-xs text-zinc-500 italic">
-                    No GST tax invoices match your search.
+                    No GST tax invoices yet. Record a sale to auto-generate one.
                   </TableCell>
                 </TableRow>
               ) : (
@@ -105,7 +128,7 @@ export function InvoicesTab({ invoices = [] }: InvoicesTabProps) {
         </div>
       </div>
 
-      {/* Right: Digital Tax Invoice Preview Drawer */}
+      {/* Right: Invoice Preview */}
       <div className="saas-card p-5 flex flex-col justify-between space-y-4">
         <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
           <h4 className="text-xs font-bold text-zinc-200 uppercase tracking-wider flex items-center gap-2">
@@ -136,9 +159,20 @@ export function InvoicesTab({ invoices = [] }: InvoicesTabProps) {
                 </div>
                 <div>
                   <p className="text-zinc-500 text-[9px] uppercase font-bold">Date of Issue:</p>
-                  <p className="font-mono text-zinc-300">{selectedInvoice.timestamp ? new Date(selectedInvoice.timestamp).toLocaleDateString('en-IN') : 'Today'}</p>
+                  <p className="font-mono text-zinc-300">
+                    {selectedInvoice.timestamp ? new Date(selectedInvoice.timestamp).toLocaleDateString('en-IN') : 'Today'}
+                  </p>
                 </div>
               </div>
+
+              {selectedInvoice.productName && (
+                <div className="border-t border-zinc-800 pt-2 text-[11px]">
+                  <p className="text-zinc-500 text-[9px] uppercase font-bold mb-1">Item:</p>
+                  <p className="text-zinc-200">
+                    {selectedInvoice.productName} × {selectedInvoice.quantity} @ ₹{(selectedInvoice.unitPrice || 0).toLocaleString('en-IN')}
+                  </p>
+                </div>
+              )}
             </div>
 
             <div className="bg-zinc-950 border border-zinc-800 p-4 rounded-xl space-y-2 font-mono">
@@ -147,7 +181,7 @@ export function InvoicesTab({ invoices = [] }: InvoicesTabProps) {
                 <span>₹{(selectedInvoice.subtotal || 0).toLocaleString('en-IN')}</span>
               </div>
               <div className="flex justify-between text-zinc-400">
-                <span>Integrated GST (IGST/CGST):</span>
+                <span>GST ({selectedInvoice.gstRate || 18}% CGST+SGST):</span>
                 <span>₹{(selectedInvoice.gstAmount || 0).toLocaleString('en-IN')}</span>
               </div>
               <div className="flex justify-between text-white font-bold border-t border-zinc-800 pt-2 text-sm">
@@ -162,15 +196,27 @@ export function InvoicesTab({ invoices = [] }: InvoicesTabProps) {
             </div>
 
             <div className="pt-2 flex gap-2">
-              <Button 
-                onClick={() => alert(`Printing Invoice #${selectedInvoice.invoiceNumber}...`)} 
+              <Button
+                onClick={() => {
+                  if (selectedInvoice.pdfData) {
+                    openPdfFromBase64(selectedInvoice.pdfData, `${selectedInvoice.invoiceNumber}.pdf`, false);
+                  } else {
+                    alert('PDF not yet available for this invoice.');
+                  }
+                }}
                 className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl h-9 shadow-md"
               >
                 <Printer className="w-3.5 h-3.5 mr-1.5" /> Print PDF
               </Button>
-              <Button 
-                variant="outline" 
-                onClick={() => alert(`Downloading Invoice #${selectedInvoice.invoiceNumber}.pdf...`)} 
+              <Button
+                variant="outline"
+                onClick={() => {
+                  if (selectedInvoice.pdfData) {
+                    openPdfFromBase64(selectedInvoice.pdfData, `${selectedInvoice.invoiceNumber}.pdf`, true);
+                  } else {
+                    alert('PDF not yet available for this invoice.');
+                  }
+                }}
                 className="bg-zinc-950 border-zinc-800 text-zinc-300 hover:bg-zinc-800 text-xs font-bold rounded-xl h-9"
               >
                 <Download className="w-3.5 h-3.5" />
@@ -180,7 +226,7 @@ export function InvoicesTab({ invoices = [] }: InvoicesTabProps) {
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center py-12 text-zinc-500 text-center gap-2">
             <FileText className="w-8 h-8 text-zinc-700" />
-            <p className="text-xs font-medium">Select an invoice from the table on the left to preview digital GST format.</p>
+            <p className="text-xs font-medium">Select an invoice from the table on the left to preview.</p>
           </div>
         )}
       </div>
