@@ -142,43 +142,68 @@ Respond in JSON format only matching this schema:
   }
 }
 
-function fallbackExtract(input: string): ExtractedEntities {
-  const lower = input.toLowerCase();
-  const quantityMatch = input.match(/(\d+)\s*(laptops?|keyboards?|monitors?|headphones?|printers?|mice|mouse|notebooks?|pens?|shoes?|pairs?|medicines?|sanitizers?|bottles?|cables?|usb|routers?|bags?|drives?|flash|strips?)/i);
-  const priceMatch = input.match(/(\d[\d,]*)/g);
-  
+export function fallbackExtract(input: string): ExtractedEntities {
+  const cleanInput = input
+    .replace(/^(?:then|and|so|now|please)\s+/i, '')
+    .replace(/\s*(?:update|update karo|update stock|please|karo|now)\s*$/i, '')
+    .trim();
+
   let quantity: number | null = null;
   let unitPrice: number | null = null;
   let productName: string | null = null;
 
-  if (quantityMatch) {
-    quantity = parseInt(quantityMatch[1]);
-    productName = quantityMatch[2].replace(/s$/, '');
+  // 1. Extract quantity and product name dynamically (e.g. "3 jbl speaker", "50 dairy milk", "10 keyboards")
+  const qProdMatch = cleanInput.match(/(\d+)\s+([a-zA-Z0-9\s\-_]+?)(?:\s+(?:for|at|@|price|rs|rupees|inr|each|per|becha|sold|bought|khareeda|behca|beche|\d+|$))/i);
+  if (qProdMatch) {
+    quantity = parseInt(qProdMatch[1], 10);
+    let pName = qProdMatch[2].trim();
+    pName = pName.replace(/^(?:bought|purchased|khareeda|kharida|sold|becha|behca|beche|check|stock of)\s+/i, '');
+    pName = pName.replace(/\s+(?:for|at|each|per)$/i, '').trim();
+    if (pName.length > 1) {
+      productName = pName;
+    }
   }
 
-  if (priceMatch) {
-    const prices = priceMatch.map(p => parseInt(p.replace(/,/g, ''))).filter(p => p > 0 && p !== quantity);
-    if (prices.length > 0) {
-      const maxPrice = Math.max(...prices);
-      if (quantity && maxPrice > quantity * 100) {
-        unitPrice = maxPrice;
-      } else if (prices.length >= 1) {
-        unitPrice = prices[0];
-      }
+  if (!productName) {
+    const listMatch = cleanInput.match(/(\d+)\s*(laptops?|keyboards?|monitors?|headphones?|speakers?|printers?|mice|mouse|notebooks?|pens?|shoes?|pairs?|medicines?|sanitizers?|bottles?|cables?|usb|routers?|bags?|drives?|flash|strips?)/i);
+    if (listMatch) {
+      quantity = parseInt(listMatch[1], 10);
+      productName = listMatch[2].replace(/s$/, '');
     }
+  }
+
+  // 2. Extract unit price from input
+  const numbers = cleanInput.match(/\d[\d,]*/g)?.map(n => parseInt(n.replace(/,/g, ''), 10)) || [];
+  const validPrices = numbers.filter(n => n !== quantity && n > 0);
+  if (validPrices.length > 0) {
+    unitPrice = validPrices[0];
   }
 
   const missingFields: string[] = [];
   if (!productName) missingFields.push('productName');
-  if (!quantity) missingFields.push('quantity');
-  if (!unitPrice) missingFields.push('unitPrice');
+  if (quantity === null) missingFields.push('quantity');
+  if (unitPrice === null) missingFields.push('unitPrice');
 
-  return { productName, quantity, unitPrice, amount: null, customerName: null, supplier: null, missingFields };
+  return {
+    productName,
+    quantity,
+    unitPrice,
+    amount: (quantity && unitPrice) ? quantity * unitPrice : null,
+    customerName: null,
+    supplier: null,
+    missingFields
+  };
 }
 
 export async function findMatchingProduct(productName: string | null, shopId?: string | null): Promise<{ id: string; name: string; unitPrice: number; gstRate: number; currentStock: number; lowStockThreshold: number } | null> {
   if (!productName || !productName.trim()) return null;
   const resolvedShopId = shopId && shopId.trim() !== '' ? shopId : null;
+
+  const cleanInput = productName
+    .trim()
+    .toLowerCase()
+    .replace(/\s*(?:update|update karo|karo|please|now|each|for)$/i, '')
+    .trim();
 
   const products = await db.product.findMany({
     where: resolvedShopId ? { shopId: resolvedShopId } : { shopId: null }
@@ -186,17 +211,19 @@ export async function findMatchingProduct(productName: string | null, shopId?: s
 
   if (products.length === 0) return null;
 
-  const cleanInput = productName.trim().toLowerCase();
-
-  // 1. Exact match (case-insensitive)
-  const exact = products.find(p => p.name.trim().toLowerCase() === cleanInput);
+  // 1. Exact match (case-insensitive) or singular/plural match
+  const cleanSingular = cleanInput.replace(/s$/, '');
+  const exact = products.find(p => {
+    const pName = p.name.trim().toLowerCase();
+    return pName === cleanInput || pName.replace(/s$/, '') === cleanSingular;
+  });
   if (exact) return { id: exact.id, name: exact.name, unitPrice: exact.unitPrice, gstRate: exact.gstRate, currentStock: exact.currentStock, lowStockThreshold: exact.lowStockThreshold };
 
   // Generic category words that shouldn't be the sole reason for matching different products
   const genericWords = new Set([
     'laptop', 'laptops', 'phone', 'phones', 'mobile', 'mobiles', 'keyboard', 'keyboards', 
     'mouse', 'mice', 'monitor', 'monitors', 'headphone', 'headphones', 'earphone', 'earphones',
-    'notebook', 'notebooks', 'pen', 'pens', 'pencil', 'pencils', 'shoe', 'shoes', 'boot', 'boots',
+    'speaker', 'speakers', 'notebook', 'notebooks', 'pen', 'pens', 'pencil', 'pencils', 'shoe', 'shoes', 'boot', 'boots',
     'tablet', 'tablets', 'medicine', 'medicines', 'light', 'lights', 'bulb', 'bulbs', 'packet', 'packets',
     'piece', 'pieces', 'pcs', 'item', 'items', 'product', 'products', 'unit', 'units'
   ]);

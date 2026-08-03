@@ -165,7 +165,7 @@ export function BusinessInsightsTab({
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={topStockValuation}>
                   <XAxis dataKey="name" stroke="#71717a" fontSize={10} tickLine={false} />
-                  <YAxis stroke="#71717a" fontSize={10} tickLine={false} formatter={(val) => `₹${(Number(val) || 0) / 1000}k`} />
+                  <YAxis stroke="#71717a" fontSize={10} tickLine={false} tickFormatter={(val) => `₹${(Number(val) || 0) / 1000}k`} />
                   <Tooltip
                     contentStyle={{
                       backgroundColor: '#121215',
